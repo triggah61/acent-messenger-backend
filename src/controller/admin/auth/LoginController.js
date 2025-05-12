@@ -21,7 +21,10 @@ const { generateWebToken } = require("../../../services/AuthService");
 const SimpleValidator = require("../../../validator/simpleValidator");
 const jwt = require("jsonwebtoken");
 const speakeasy = require("speakeasy");
-const { createOtp } = require("../../../services/OtpVerificationService");
+const {
+  createOtp,
+  resendOtp,
+} = require("../../../services/OtpVerificationService");
 
 /**
  * Handles user login
@@ -42,26 +45,43 @@ const { createOtp } = require("../../../services/OtpVerificationService");
 exports.login = catchAsync(async (req, res) => {
   await SimpleValidator(req.body, {
     phone: "required",
-    password: "required",
+    dialCode: "required",
+    // password: "required",
   });
-  const { phone, password } = req.body;
+  const { phone, dialCode } = req.body;
 
   // 1. Validate Email and Password
   const user = await User.findOne({
     phone,
     status: { $ne: "deleted" },
   });
-  if (!user) {
-    return res.status(422).json({ message: "Invalid phone or password" });
-  }
 
-  const isPasswordCorrect = await user.correctPassword(password, user.password);
-  if (!isPasswordCorrect) {
-    return res.status(422).json({ message: "Invalid phone or password" });
+  if (user && user.status == "blocked") {
+    throw new AppError("User is blocked", 400);
   }
+  // if (!user) {
+  //   return res.status(422).json({ message: "Invalid phone number entered" });
+  // }
 
-  let otp = await createOtp(user._id, "USER_LOGIN", "phone", phone, {
-    userId: user._id,
+  // const isPasswordCorrect = await user.correctPassword(password, user.password);
+  // if (!isPasswordCorrect) {
+  //   return res.status(422).json({ message: "Invalid phone or password" });
+  // }
+
+  // if (true) {
+  //   // Generate the final JWT token
+  //   const webToken = await generateWebToken(user);
+
+  //   return res.status(200).json({
+  //     message: "Login successful",
+  //     data: { token: webToken },
+  //   });
+  // }
+
+  let otp = await createOtp(user?._id ?? null, "USER_LOGIN", "phone", phone, {
+    // userId: user._id,
+    phone: phone,
+    dialCode: dialCode,
   });
 
   return res.status(200).json({
@@ -86,11 +106,11 @@ exports.login = catchAsync(async (req, res) => {
  */
 exports.verifyLoginWithOTP = catchAsync(async (req, res) => {
   let { trace } = req.body;
-  let { userId } = trace.data;
+  let { phone, dialCode } = trace.data;
 
-  let user = await User.findById(userId);
+  let user = await User.findOne({ phone });
   if (!user) {
-    throw new AppError("User not found", 404);
+    user = await User.create({ phone, dialCode, status: "activated" });
   }
 
   // Generate the final JWT token
@@ -99,5 +119,19 @@ exports.verifyLoginWithOTP = catchAsync(async (req, res) => {
   res.json({
     message: "Login successful",
     data: { token: webToken },
+  });
+});
+
+exports.resendOTP = catchAsync(async (req, res) => {
+  SimpleValidator(req.body, {
+    traceId: "required",
+  });
+  let { traceId } = req.body;
+
+  let otp = await resendOtp(traceId);
+
+  res.json({
+    message: "OTP resent",
+    data: { traceId: otp.traceId },
   });
 });

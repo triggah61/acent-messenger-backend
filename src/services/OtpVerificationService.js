@@ -27,11 +27,24 @@ exports.createOtp = async (userId, criteria, via, phone, data = {}) => {
 
 exports.resendOtp = async (traceId) => {
   let code = Math.floor(100000 + Math.random() * 900000);
-  let verification = await OtpVerification.findByIdAndUpdate(traceId, {
-    code,
-  });
+  if (process.env.NODE_ENV == "dev") {
+    code = 123456;
+  }
+  let verification = await OtpVerification.findOneAndUpdate(
+    { traceId },
+    {
+      code,
+    },
+    { new: true }
+  );
 
-  let { criteria, phoneWithDialCode, user: userId } = verification;
+  let { criteria, phoneWithDialCode, user: userId, via, status } = verification;
+  if (status !== "pending") {
+    return {
+      message: `OTP already ${status}`,
+      data: { traceId },
+    };
+  }
 
   if (via == "phone") {
     let sms = new SMS(phoneWithDialCode).text(`Your OTP is ${code}`).send();

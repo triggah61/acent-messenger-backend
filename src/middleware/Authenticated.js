@@ -36,7 +36,7 @@ module.exports = catchAsync(async (req, res, next) => {
     var decoded = await jwt.verify(token, secret);
     let { id, roleType } = decoded;
     let user = await User.findById(id)
-      .select("firstName lastName username email phone photo status")
+      .select("firstName lastName username email phone dialCode photo status")
       .lean();
     if (!user) {
       return next(

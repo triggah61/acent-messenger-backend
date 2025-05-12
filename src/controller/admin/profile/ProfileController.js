@@ -30,19 +30,13 @@ const SimpleValidator = require("../../../validator/simpleValidator");
  */
 exports.info = catchAsync(async (req, res) => {
   let { user } = req;
-
-  let permissions = user?.role?.permissions ?? [];
-
   let data = {
     id: user._id,
     firstName: user.firstName,
     lastName: user.lastName,
-    email: user.email,
     photo: user.photo,
-    googleAuthenticator: user.googleAuthenticator,
-    roleType: user.roleType,
-    role: user.role,
-    permissions,
+    phone: user.phone,
+    dialCode: user.dialCode,
     status: user.status,
     createdAt: user.createdAt,
   };

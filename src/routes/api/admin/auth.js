@@ -12,6 +12,7 @@
 const {
   login,
   verifyLoginWithOTP,
+  resendOTP,
 } = require("../../../controller/admin/auth/LoginController");
 const {
   register,
@@ -38,7 +39,9 @@ authRouter.group("/auth", (auth) => {
    * @desc Authenticate admin and initiate login process
    * @access Public
    */
-  auth.post("/login", login);
+  auth.post("/loginRequest", login);
+
+  auth.post("/resendOTP", resendOTP);
 
   /**
    * POST /auth/login/verify
@@ -50,6 +53,7 @@ authRouter.group("/auth", (auth) => {
   auth.post("/registerRequest", registerRequest);
 
   auth.post("/verifyRegistration", otpVerified, verifyRegistration);
+
 });
 
 module.exports = authRouter;
