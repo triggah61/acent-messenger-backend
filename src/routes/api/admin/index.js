@@ -6,7 +6,7 @@ const IsAdmin = require("../../../middleware/IsAdmin");
 const adminRouter = express.Router();
 require("express-group-routes");
 
-adminRouter.group("/", (admin) => {
+adminRouter.group("/admin", (admin) => {
   admin.use(Authenticated);
   // admin.use(IsAdmin);
   admin.use(userRouter);

@@ -21,6 +21,7 @@ const { generateWebToken } = require("../../../services/AuthService");
 const SimpleValidator = require("../../../validator/simpleValidator");
 const jwt = require("jsonwebtoken");
 const speakeasy = require("speakeasy");
+const { createOtp } = require("../../../services/OtpVerificationService");
 
 /**
  * Handles user login
@@ -40,51 +41,33 @@ const speakeasy = require("speakeasy");
  */
 exports.login = catchAsync(async (req, res) => {
   await SimpleValidator(req.body, {
-    email: "required|email",
+    phone: "required",
     password: "required",
   });
-  const { email, password } = req.body;
+  const { phone, password } = req.body;
 
   // 1. Validate Email and Password
   const user = await User.findOne({
-    email,
+    phone,
     status: { $ne: "deleted" },
   });
   if (!user) {
-    return res.status(422).json({ message: "Invalid email or password" });
+    return res.status(422).json({ message: "Invalid phone or password" });
   }
 
   const isPasswordCorrect = await user.correctPassword(password, user.password);
   if (!isPasswordCorrect) {
-    return res.status(422).json({ message: "Invalid email or password" });
+    return res.status(422).json({ message: "Invalid phone or password" });
   }
 
-  // 2. Check if Google Authenticator is enabled
-  if (user?.googleAuthenticator == "on") {
-    let temporaryTokenForAuthenticatorVerification = jwt.sign(
-      { authenticatorVerificationId: user._id },
-      process.env.JWT_SECRET,
-      { expiresIn: "10m" }
-    );
-    return res.status(200).json({
-      status: "otp_required",
-      message: "OTP is required",
-      token: temporaryTokenForAuthenticatorVerification, // Send back user ID for OTP validation
-    });
-  }
+  let otp = await createOtp(user._id, "USER_LOGIN", "phone", phone, {
+    userId: user._id,
+  });
 
-  // 3. Generate JWT Token if no OTP is required
-  const token = await generateWebToken(user);
-
-  // check dashboard access
-  let hasDashboardAccess = true;
-
-  res.json({
-    message: "Logged in successfully",
-    data: {
-      token,
-      hasDashboardAccess,
-    },
+  return res.status(200).json({
+    status: "otp_required",
+    message: "OTP is required",
+    data: { traceId: otp.traceId },
   });
 });
 
@@ -97,68 +80,24 @@ exports.login = catchAsync(async (req, res) => {
  * @async
  * @param {Object} req - Express request object
  * @param {Object} req.body - Request body
- * @param {string} req.body.otp - One-time password for verification
- * @param {string} req.body.token - Temporary token from initial login
  * @param {Object} res - Express response object
  * @returns {Promise<void>} Sends a JSON response with authentication result
  * @throws {AppError} If validation fails or OTP verification is unsuccessful
  */
 exports.verifyLoginWithOTP = catchAsync(async (req, res) => {
-  SimpleValidator(req.body, {
-    otp: "required|maxlength:6",
-    token: "required",
+  let { trace } = req.body;
+  let { userId } = trace.data;
+
+  let user = await User.findById(userId);
+  if (!user) {
+    throw new AppError("User not found", 404);
+  }
+
+  // Generate the final JWT token
+  const webToken = await generateWebToken(user);
+
+  res.json({
+    message: "Login successful",
+    data: { token: webToken },
   });
-  const { token, otp } = req.body;
-
-  if (!token || !otp) {
-    throw new AppError("Temporary token and OTP are required", 422);
-  }
-
-  try {
-    // Decode the temporary token
-    const { authenticatorVerificationId } = jwt.verify(
-      token,
-      process.env.JWT_SECRET
-    );
-
-    if (!authenticatorVerificationId) {
-      throw new AppError("Invalid token provided", 401);
-    }
-
-    // Find the user
-    const user = await User.findById(authenticatorVerificationId);
-    if (!user || user?.googleAuthenticator !== "on") {
-      throw new AppError("Invalid user or authenticator not enabled", 401);
-    }
-
-    // Verify the OTP
-    const isValidOTP = speakeasy.totp.verify({
-      secret: user.googleAuthSeed,
-      encoding: "base32",
-      token: otp,
-    });
-
-    if (!isValidOTP) {
-      throw new AppError("Invalid OTP", 409);
-    }
-
-    // Generate the final JWT token
-    const webToken = await generateWebToken(user);
-
-    // check dashboard access
-    let hasDashboardAccess = true;
-
-    res.json({
-      message: "Login successful",
-      data: { token: webToken, hasDashboardAccess },
-    });
-  } catch (error) {
-    if (
-      error.name === "JsonWebTokenError" ||
-      error.name === "TokenExpiredError"
-    ) {
-      throw new AppError("Invalid or expired temporary token", 401);
-    }
-    throw error;
-  }
 });

@@ -16,7 +16,9 @@ const {
 const {
   register,
   verifyRegistration,
+  registerRequest,
 } = require("../../../controller/admin/auth/RegisterController");
+const otpVerified = require("../../../middleware/otpVerified");
 
 /**
  * Express router to mount admin authentication related functions on.
@@ -43,9 +45,11 @@ authRouter.group("/auth", (auth) => {
    * @desc Verify admin login with OTP
    * @access Public
    */
-  auth.post("/login/verify", verifyLoginWithOTP);
+  auth.post("/login/verify", otpVerified, verifyLoginWithOTP);
 
-  auth.post("/register", register);
+  auth.post("/registerRequest", registerRequest);
+
+  auth.post("/verifyRegistration", otpVerified, verifyRegistration);
 });
 
 module.exports = authRouter;

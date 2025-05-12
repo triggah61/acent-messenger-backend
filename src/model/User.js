@@ -16,11 +16,11 @@ const schema = new Schema(
       type: String,
       default: null,
     },
-    balance: {
-      type: Number,
-      default: 0,
-    },
     email: {
+      type: String,
+      default: null,
+    },
+    dialCode: {
       type: String,
       default: null,
     },
@@ -45,22 +45,28 @@ const schema = new Schema(
       type: Date,
       default: null,
     },
-    googleAuthenticator: {
-      type: String,
-      enum: ["unset", "on", "off"],
-      default: "unset",
-    },
-
-    googleAuthSeed: {
+    socketId: {
       type: String,
       default: null,
     },
-    roleType: {
-      type: String,
-      enum: ["superAdmin", `admin`, "user"],
-      default: "user",
-    },
 
+    contacts: [
+      {
+        user: {
+          type: Schema.Types.ObjectId,
+          ref: "User",
+        },
+        date: {
+          type: Date,
+          default: Date.now(),
+        },
+        status: {
+          type: String,
+          enum: ["sent", "received", "active", "rejected", "blocked"],
+          default: "sent",
+        },
+      },
+    ],
     status: {
       type: String,
       enum: ["pending", "activated", "blocked", "deleted"],

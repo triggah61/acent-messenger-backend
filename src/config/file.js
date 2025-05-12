@@ -87,3 +87,5 @@ exports.deleteFileByPath = async (filePath) => {
     return false
   }
 };
+
+exports.s3 = s3;

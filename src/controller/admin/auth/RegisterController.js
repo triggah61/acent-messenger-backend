@@ -14,10 +14,13 @@
  */
 
 const Email = require("../../../config/email");
+const SMS = require("../../../config/sms");
 const AppError = require("../../../exception/AppError");
 const catchAsync = require("../../../exception/catchAsync");
+const OtpVerification = require("../../../model/OtpVerification");
 const User = require("../../../model/User");
 const { generateWebToken } = require("../../../services/AuthService");
+const { createOtp } = require("../../../services/OtpVerificationService");
 const SimpleValidator = require("../../../validator/simpleValidator");
 const jwt = require("jsonwebtoken");
 
@@ -38,37 +41,35 @@ const jwt = require("jsonwebtoken");
  * @returns {Promise<void>} Sends a JSON response with registration result
  * @throws {AppError} If validation fails or registration is unsuccessful
  */
-exports.register = catchAsync(async (req, res) => {
+exports.registerRequest = catchAsync(async (req, res) => {
   await SimpleValidator(req.body, {
-    email: "required|email",
+    phone: "required|min:10",
     password: "required|min:6",
     firstName: "required",
   });
 
-  const { email, password, firstName, lastName } = req.body;
+  const { phone, password, firstName, lastName } = req.body;
 
-  // Check if user already exists
-  const existingUser = await User.findOne({ email });
-  if (existingUser) {
-    if (existingUser.status === "pending") {
-      await User.findByIdAndDelete(existingUser._id);
-    } else {
-      throw new AppError("Email already registered", 422);
-    }
-  }
+  let otp = await createOtp(null, "USER_REGISTER", "phone", phone, req.body);
 
-  // Create user with pending status
-  const user = await User.create({
-    email,
-    password,
+  res.json({
+    message: "OTP sent to the phone number",
+    data: { traceId: otp.traceId },
+  });
+});
+
+exports.verifyRegistration = catchAsync(async (req, res) => {
+  let { trace } = req.body;
+  let { firstName, lastName, phone, password } = trace.data;
+  let user = await User.create({
     firstName,
     lastName,
+    phone,
+    password,
     status: "activated",
-    roleType: "user",
   });
+  let webToken = await generateWebToken(user);
 
-  // Generate the final JWT token
-  const webToken = await generateWebToken(user);
   res.json({
     message: "Registration completed successfully",
     data: { token: webToken },
