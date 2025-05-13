@@ -11,7 +11,7 @@ const multerMiddleware = require("../../../config/multer");
 const {
   info,
   updateProfile,
-  switchWorkspace,
+  uploadPhoto,
 } = require("../../../controller/admin/profile/ProfileController");
 const Authenticated = require("../../../middleware/Authenticated");
 
@@ -20,9 +20,9 @@ require("express-group-routes");
 profileRouter.group("/profile", (profile) => {
   profile.use(Authenticated);
   profile.get("/info", info);
+  profile.post("/uploadPhoto", multerMiddleware.single("photo"), uploadPhoto);
   profile.post(
     "/updateProfile",
-    multerMiddleware.single("photo"),
     updateProfile
   );
 });

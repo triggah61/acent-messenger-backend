@@ -37,11 +37,11 @@ const schema = new Schema(
       default: null,
     },
 
-    verificationOTP: {
+    gender: {
       type: String,
       default: null,
     },
-    verificationOTPExpires: {
+    dob: {
       type: Date,
       default: null,
     },

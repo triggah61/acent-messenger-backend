@@ -68,7 +68,7 @@ exports.updateProfile = catchAsync(async (req, res) => {
     firstName: "required",
   });
 
-  const { firstName, lastName } = req.body;
+  const { firstName, lastName, email, phone, gender, dob } = req.body;
 
   // 2. Find the user by ID
   user = await User.findById(user._id);
@@ -83,14 +83,17 @@ exports.updateProfile = catchAsync(async (req, res) => {
   if (lastName) {
     user.lastName = lastName;
   }
-
-  if (req.file) {
-    if (user?.photo) {
-      await deleteFileByPath(user.photo);
-    }
-    let uploadData = await upload(req.file, "profile-photo");
-    const { Key } = uploadData;
-    user.photo = Key;
+  if (email) {
+    user.email = email;
+  }
+  if (phone) {
+    user.phone = phone;
+  }
+  if (gender) {
+    user.gender = gender;
+  }
+  if (dob) {
+    user.dob = dob;
   }
 
   // 4. Save the updated user
@@ -109,6 +112,24 @@ exports.updateProfile = catchAsync(async (req, res) => {
         role: user.roleType,
         status: user.status,
       },
+    },
+  });
+});
+
+exports.uploadPhoto = catchAsync(async (req, res) => {
+  let { user } = req;
+  if (!req.file) {
+    throw new AppError("Photo is required", 400);
+  }
+  let uploadData = await upload(req.file, "profile-photo");
+  console.log(uploadData);
+  const { Key } = uploadData;
+  user.photo = Key;
+  await user.save();
+  res.json({
+    message: "Profile photo uploaded successfully",
+    data: {
+      photo: Key,
     },
   });
 });
