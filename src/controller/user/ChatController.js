@@ -81,6 +81,110 @@ exports.createChatSession = catchAsync(async (req, res) => {
   });
 });
 
+exports.sessionList = catchAsync(async (req, res) => {
+  const { user } = req;
+  const { page, limit } = req.query;
+
+  let aggregate = ChatSession.aggregate([
+    {
+      $match: {
+        receipients: { $elemMatch: { user: user._id } },
+        // lastMessage: { $ne: null },
+      },
+    },
+    {
+      $lookup: {
+        from: "messages",
+        localField: "lastMessage",
+        foreignField: "_id",
+        as: "lastMessage",
+      },
+    },
+    {
+      $unwind: {
+        path: "$lastMessage",
+        preserveNullAndEmptyArrays: true,
+      },
+    },
+    // Add lookup for other user in personal chats
+    {
+      $lookup: {
+        from: "users",
+        let: { receipients: "$receipients" },
+        pipeline: [
+          {
+            $match: {
+              $expr: {
+                $and: [
+                  { $in: ["$_id", "$$receipients.user"] },
+                  { $ne: ["$_id", user._id] },
+                ],
+              },
+            },
+          },
+          {
+            $project: {
+              firstName: 1,
+              lastName: 1,
+              photo: 1,
+            },
+          },
+        ],
+        as: "otherUser",
+      },
+    },
+    {
+      $addFields: {
+        title: {
+          $cond: {
+            if: { $eq: ["$type", "personal"] },
+            then: {
+              $concat: [
+                { $arrayElemAt: ["$otherUser.firstName", 0] },
+                " ",
+                { $arrayElemAt: ["$otherUser.lastName", 0] },
+              ],
+            },
+            else: "$title",
+          },
+        },
+      },
+    },
+    {
+      $addFields: {
+        photo: {
+          $cond: {
+            if: { $eq: ["$type", "personal"] },
+            then: { $arrayElemAt: ["$otherUser.photo", 0] },
+            else: "$photo",
+          },
+        },
+      },
+    },
+    {
+      $unwind: {
+        path: "$otherUser",
+        preserveNullAndEmptyArrays: true,
+      },
+    },
+    {
+      $sort: {
+        createdAt: -1,
+      },
+    },
+  ]);
+
+  let records = await ChatSession.aggregatePaginate(aggregate, {
+    page: parseInt(page),
+    limit: parseInt(limit),
+  });
+
+  return res.status(200).json({
+    message: "Chat sessions fetched successfully",
+    data: records,
+  });
+});
+
 exports.sendMessage = catchAsync(async (req, res) => {
   const { user } = req;
   const { chatSessionId, message } = req.body;
@@ -106,7 +210,7 @@ exports.sendMessage = catchAsync(async (req, res) => {
 
   // Check if the user is a recipient of the chat session
   if (
-    chatSession.receipients.some(
+    !chatSession.receipients.some(
       (receipient) => receipient.user.toString() !== user._id.toString()
     )
   ) {
@@ -130,9 +234,15 @@ exports.sendMessage = catchAsync(async (req, res) => {
 
   const messageInfo = await Message.create({
     chatSession: chatSessionId,
-    message,
+    content: message,
     attachments: attachmentIds,
     sender: user._id,
+  });
+
+  await ChatSession.findByIdAndUpdate(chatSessionId, {
+    $set: {
+      lastMessage: messageInfo._id,
+    },
   });
 
   return res.status(200).json({

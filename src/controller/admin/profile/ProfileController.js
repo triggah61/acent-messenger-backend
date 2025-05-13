@@ -39,6 +39,8 @@ exports.info = catchAsync(async (req, res) => {
     dialCode: user.dialCode,
     status: user.status,
     createdAt: user.createdAt,
+    gender: user.gender,
+    dob: user.dob,
   };
   res.json({
     message: "Fetched successfully",
@@ -111,6 +113,8 @@ exports.updateProfile = catchAsync(async (req, res) => {
         photo: user.photo,
         role: user.roleType,
         status: user.status,
+        gender: user.gender,
+        dob: user.dob,
       },
     },
   });
@@ -121,6 +125,8 @@ exports.uploadPhoto = catchAsync(async (req, res) => {
   if (!req.file) {
     throw new AppError("Photo is required", 400);
   }
+
+  user = await User.findById(user._id);
   let uploadData = await upload(req.file, "profile-photo");
   console.log(uploadData);
   const { Key } = uploadData;

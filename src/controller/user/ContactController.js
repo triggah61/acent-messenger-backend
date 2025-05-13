@@ -74,14 +74,14 @@ exports.sendRequest = catchAsync(async (req, res) => {
 
 exports.acceptRequest = catchAsync(async (req, res) => {
   const { user } = req;
-  const { receiverId } = req.params;
-  let checkAccount = await User.findOne({ _id: receiverId });
+  const { senderId } = req.params;
+  let checkAccount = await User.findOne({ _id: senderId });
   if (!checkAccount) {
     throw new AppError("User not found", 404);
   }
   let checkContact = await User.findOne({
     _id: user._id,
-    contacts: { $elemMatch: { user: checkAccount._id, status: "sent" } },
+    contacts: { $elemMatch: { user: checkAccount._id, status: "received" } },
   });
   if (!checkContact) {
     throw new AppError("Contact not found", 404);

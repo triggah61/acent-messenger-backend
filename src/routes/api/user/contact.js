@@ -14,7 +14,7 @@ contactRouter.group("/contact", (contact) => {
   contact.post("/invite", sendInvitation);
   contact.post("/find", findContact);
   contact.post("/request/:receiverId", sendRequest);
-  contact.post("/accept/:receiverId", acceptRequest);
+  contact.post("/accept/:senderId", acceptRequest);
 });
 
 module.exports = contactRouter;

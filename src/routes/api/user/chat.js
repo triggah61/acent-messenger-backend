@@ -3,6 +3,7 @@ const {
   findChatSessionByReceipient,
   createChatSession,
   sendMessage,
+  sessionList,
 } = require("../../../controller/user/ChatController");
 const Authenticated = require("../../../middleware/Authenticated");
 const chatRouter = require("express").Router();
@@ -19,6 +20,7 @@ chatRouter.group("/chat", (chat) => {
     multerMiddleware.array("attachments", 5),
     sendMessage
   );
+  chat.get("/sessionList", sessionList);
 });
 
 module.exports = chatRouter;

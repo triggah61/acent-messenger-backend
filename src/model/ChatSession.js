@@ -23,6 +23,10 @@ const chatSessionSchema = new Schema(
       enum: ["personal", "group"],
       default: "personal",
     },
+    photo: {
+      type: String,
+      default: null,
+    },
     lastMessage: {
       type: Schema.Types.ObjectId,
       ref: "Message",
