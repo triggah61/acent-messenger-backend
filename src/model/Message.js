@@ -15,6 +15,11 @@ var aggregatePaginate = require("mongoose-aggregate-paginate-v2");
 
 const messageSchema = new Schema(
   {
+    chatSession: {
+      type: Schema.Types.ObjectId,
+      ref: "ChatSession",
+      required: true,
+    },
     sender: {
       type: Schema.Types.ObjectId,
       ref: "User",

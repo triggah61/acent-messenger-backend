@@ -1,3 +1,4 @@
+const { Types } = require("mongoose");
 const { upload } = require("../../config/file");
 const AppError = require("../../exception/AppError");
 const catchAsync = require("../../exception/catchAsync");
@@ -127,6 +128,10 @@ exports.sessionList = catchAsync(async (req, res) => {
               firstName: 1,
               lastName: 1,
               photo: 1,
+              dialCode: 1,
+              phone: 1,
+              _id: 1,
+              status: 1,
             },
           },
         ],
@@ -248,5 +253,71 @@ exports.sendMessage = catchAsync(async (req, res) => {
   return res.status(200).json({
     message: "Message sent successfully",
     data: messageInfo,
+  });
+});
+
+exports.getMessages = catchAsync(async (req, res) => {
+  const { user } = req;
+  const { page, limit } = req.query;
+  const { chatSessionId } = req.params;
+
+  SimpleValidator(req.params, {
+    chatSessionId: "required|mongoid",
+  });
+
+  const chatSession = await ChatSession.findById(chatSessionId);
+  if (!chatSession) {
+    throw new AppError("Chat session not found", 404);
+  }
+
+  let aggregate = Message.aggregate([
+    {
+      $match: {
+        chatSession: new Types.ObjectId(chatSessionId),
+      },
+    },
+    {
+      $lookup: {
+        from: "users",
+        localField: "sender",
+        foreignField: "_id",
+        as: "sender",
+        pipeline: [
+          {
+            $project: {
+              firstName: 1,
+              lastName: 1,
+              photo: 1,
+              dialCode: 1,
+              phone: 1,
+            },
+          },
+        ],
+      },
+    },
+    {
+      $unwind: {
+        path: "$sender",
+        preserveNullAndEmptyArrays: true,
+      },
+    },
+    {
+      $lookup: {
+        from: "attachments",
+        localField: "attachments",
+        foreignField: "_id",
+        as: "attachments",
+      },
+    },
+  ]);
+
+  let records = await Message.aggregatePaginate(aggregate, {
+    page: parseInt(page),
+    limit: parseInt(limit),
+  });
+
+  return res.status(200).json({
+    message: "Messages fetched successfully",
+    data: records,
   });
 });

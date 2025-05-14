@@ -4,6 +4,7 @@ const {
   createChatSession,
   sendMessage,
   sessionList,
+  getMessages,
 } = require("../../../controller/user/ChatController");
 const Authenticated = require("../../../middleware/Authenticated");
 const chatRouter = require("express").Router();
@@ -21,6 +22,7 @@ chatRouter.group("/chat", (chat) => {
     sendMessage
   );
   chat.get("/sessionList", sessionList);
+  chat.get("/getMessages/:chatSessionId", getMessages);
 });
 
 module.exports = chatRouter;

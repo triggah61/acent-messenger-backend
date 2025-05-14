@@ -31,41 +31,41 @@ const initSocketServer = (server) => {
   });
 
   // Socket.IO middleware for authentication
-  io.use(async (socket, next) => {
-    try {
-      const token = socket.handshake.auth.token;
+  // io.use(async (socket, next) => {
+  //   try {
+  //     const token = socket.handshake.auth.token;
 
-      if (!token) {
-        return next(new Error("Authentication error: Token missing"));
-      }
+  //     if (!token) {
+  //       return next(new Error("Authentication error: Token missing"));
+  //     }
 
-      // Verify JWT token
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+  //     // Verify JWT token
+  //     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-      // Get user from database
-      const user = await User.findById(decoded.id);
+  //     // Get user from database
+  //     const user = await User.findById(decoded.id);
 
-      if (!user) {
-        return next(new Error("Authentication error: User not found"));
-      }
+  //     if (!user) {
+  //       return next(new Error("Authentication error: User not found"));
+  //     }
 
-      if (user.status === "blocked" || user.status === "deleted") {
-        return next(new Error("Authentication error: User blocked or deleted"));
-      }
+  //     if (user.status === "blocked" || user.status === "deleted") {
+  //       return next(new Error("Authentication error: User blocked or deleted"));
+  //     }
 
-      // Attach user to socket
-      socket.user = {
-        id: user._id.toString(),
-        username: user.username,
-        firstName: user.firstName,
-        lastName: user.lastName,
-      };
+  //     // Attach user to socket
+  //     socket.user = {
+  //       id: user._id.toString(),
+  //       username: user.username,
+  //       firstName: user.firstName,
+  //       lastName: user.lastName,
+  //     };
 
-      next();
-    } catch (error) {
-      return next(new Error("Authentication error: " + error.message));
-    }
-  });
+  //     next();
+  //   } catch (error) {
+  //     return next(new Error("Authentication error: " + error.message));
+  //   }
+  // });
 
   // Connection handler
   io.on("connection", async (socket) => {

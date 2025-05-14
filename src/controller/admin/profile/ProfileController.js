@@ -31,7 +31,7 @@ const SimpleValidator = require("../../../validator/simpleValidator");
 exports.info = catchAsync(async (req, res) => {
   let { user } = req;
   let data = {
-    id: user._id,
+    _id: user._id,
     firstName: user.firstName,
     lastName: user.lastName,
     photo: user.photo,
