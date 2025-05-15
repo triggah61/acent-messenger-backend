@@ -21,14 +21,15 @@ const User = require("../model/User");
  * @param {Object} server - HTTP server instance
  * @returns {Object} Socket.IO server instance
  */
-let io;
 const initSocketServer = (server) => {
-  io = socketIO(server, {
-    path: "/socket.io",
+  global.io = socketIO(server, {
+    path: "/api/socket.io",
     cors: {
       origin: "*",
       methods: ["GET", "POST"],
-      credentials: true,
+      // credentials: true
+      transports: ["websocket", "polling"],
+      credentials: false,
     },
   });
 
@@ -71,7 +72,7 @@ const initSocketServer = (server) => {
 
   // Connection handler
   io.on("connection", async (socket) => {
-    console.log("Connected: ", socket);
+    console.log("Socket Connected: ");
 
     socket.on("disconnect", () => {
       console.log("Disconnected: " + socket);
@@ -79,22 +80,34 @@ const initSocketServer = (server) => {
 
     // Broadcast user's online status to others
     socket.broadcast.emit("user_online", {
-      userId: socket.user.id,
+      // userId: socket.user.id,
+    });
+
+    socket.on("join_chat", (chatSessionId) => {
+      console.log("join_chat", chatSessionId);
+      socket.join(chatSessionId);
+    });
+
+    socket.on("leave_chat", (chatSessionId) => {
+      console.log("leave_chat", chatSessionId);
+      socket.leave(chatSessionId);
     });
 
     // Handle typing indicators
-    socket.on("typing_start", (data) => {
+    socket.on("typing", (data) => {
+      console.log("typing", data);
       if (data && data.receiverId) {
         io.to(`user_${data.receiverId}`).emit("typing_start", {
-          userId: socket.user.id,
+          // userId: socket.user.id,
         });
       }
     });
 
-    socket.on("typing_stop", (data) => {
+    socket.on("stop_typing", (data) => {
+      console.log("stop_typing", data);
       if (data && data.receiverId) {
-        io.to(`user_${data.receiverId}`).emit("typing_stop", {
-          userId: socket.user.id,
+        io.to(`user_${data.receiverId}`).emit("stop_typing", {
+          // userId: socket.user.id,
         });
       }
     });
@@ -104,7 +117,7 @@ const initSocketServer = (server) => {
       if (data && data.messageId && data.senderId) {
         io.to(`user_${data.senderId}`).emit("message_delivered", {
           messageId: data.messageId,
-          userId: socket.user.id,
+          // userId: socket.user.id,
         });
       }
     });
@@ -116,5 +129,4 @@ const initSocketServer = (server) => {
 
 module.exports = {
   initSocketServer,
-  io,
 };

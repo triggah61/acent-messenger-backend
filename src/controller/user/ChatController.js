@@ -7,8 +7,7 @@ const ChatSession = require("../../model/ChatSession");
 const Message = require("../../model/Message");
 const User = require("../../model/User");
 const SimpleValidator = require("../../validator/simpleValidator");
-const { io } = require("../../config/socket");
-
+const { pushNotification } = require("../../config/pusher");
 exports.findChatSessionByReceipient = catchAsync(async (req, res) => {
   const { user } = req;
   const { receipientId } = req.params;
@@ -238,7 +237,7 @@ exports.sendMessage = catchAsync(async (req, res) => {
     attachmentIds.push(attachmentInfo._id);
   }
 
-  const messageInfo = await Message.create({
+  let messageInfo = await Message.create({
     chatSession: chatSessionId,
     content: message,
     attachments: attachmentIds,
@@ -250,6 +249,11 @@ exports.sendMessage = catchAsync(async (req, res) => {
       lastMessage: messageInfo._id,
     },
   });
+
+  messageInfo = await Message.findById(messageInfo._id)
+    .populate("attachments")
+    .populate("sender", "firstName lastName photo dialCode phone")
+    .lean();
 
   io.to(chatSessionId).emit("new_message", messageInfo);
 
