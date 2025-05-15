@@ -21,8 +21,10 @@ const User = require("../model/User");
  * @param {Object} server - HTTP server instance
  * @returns {Object} Socket.IO server instance
  */
+let io;
 const initSocketServer = (server) => {
-  const io = socketIO(server, {
+  io = socketIO(server, {
+    path: "/socket.io",
     cors: {
       origin: "*",
       methods: ["GET", "POST"],
@@ -69,16 +71,10 @@ const initSocketServer = (server) => {
 
   // Connection handler
   io.on("connection", async (socket) => {
-    console.log(`User connected: ${socket.user.id}`);
+    console.log("Connected: ", socket);
 
-    // Join user's personal room for private messages
-    socket.join(`user_${socket.user.id}`);
-
-    // Update user's online status and socket ID
-    await User.findByIdAndUpdate(socket.user.id, {
-      isOnline: true,
-      lastSeen: Date.now(),
-      socketId: socket.id,
+    socket.on("disconnect", () => {
+      console.log("Disconnected: " + socket);
     });
 
     // Broadcast user's online status to others
@@ -112,27 +108,13 @@ const initSocketServer = (server) => {
         });
       }
     });
-
-    // Handle disconnection
-    socket.on("disconnect", async () => {
-      console.log(`User disconnected: ${socket.user.id}`);
-
-      // Update user's offline status
-      await User.findByIdAndUpdate(socket.user.id, {
-        isOnline: false,
-        lastSeen: Date.now(),
-        socketId: null,
-      });
-
-      // Broadcast user's offline status to others
-      socket.broadcast.emit("user_offline", {
-        userId: socket.user.id,
-        lastSeen: new Date(),
-      });
-    });
+    
   });
 
   return io;
 };
 
-module.exports = initSocketServer;
+module.exports = {
+  initSocketServer,
+  io,
+};

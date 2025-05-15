@@ -7,6 +7,7 @@ const ChatSession = require("../../model/ChatSession");
 const Message = require("../../model/Message");
 const User = require("../../model/User");
 const SimpleValidator = require("../../validator/simpleValidator");
+const { io } = require("../../config/socket");
 
 exports.findChatSessionByReceipient = catchAsync(async (req, res) => {
   const { user } = req;
@@ -250,6 +251,8 @@ exports.sendMessage = catchAsync(async (req, res) => {
     },
   });
 
+  io.to(chatSessionId).emit("new_message", messageInfo);
+
   return res.status(200).json({
     message: "Message sent successfully",
     data: messageInfo,
@@ -307,6 +310,11 @@ exports.getMessages = catchAsync(async (req, res) => {
         localField: "attachments",
         foreignField: "_id",
         as: "attachments",
+      },
+    },
+    {
+      $sort: {
+        createdAt: -1,
       },
     },
   ]);
