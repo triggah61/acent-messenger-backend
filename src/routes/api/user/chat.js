@@ -15,7 +15,7 @@ chatRouter.group("/chat", (chat) => {
     "/findChatSessionByReceipient/:receipientId",
     findChatSessionByReceipient
   );
-  chat.post("/createChatSession", createChatSession);
+  chat.post("/createSession", createChatSession);
   chat.post(
     "/sendMessage",
     multerMiddleware.array("attachments", 5),

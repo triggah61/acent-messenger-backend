@@ -99,24 +99,45 @@ exports.findChatSessionByReceipient = catchAsync(async (req, res) => {
 
 exports.createChatSession = catchAsync(async (req, res) => {
   const { user } = req;
-  const { receipientIds, title, type } = req.body;
+  console.log("req.body", req.body);
+  const { recepientIds, title, type } = req.body;
 
   SimpleValidator(req.body, {
-    receipientIds: "required|array",
+    recepientIds: "required|array",
     type: "required|string",
   });
 
-  const receipients = receipientIds.map((id) => ({
+  const receipients = recepientIds.map((id) => ({
     user: id,
     status: "active",
   }));
 
-  const chatSession = await ChatSession.create({
+  let chatSession = await ChatSession.create({
     receipients,
     title,
     createdBy: user._id,
     type,
   });
+
+  chatSession = await ChatSession.findById(chatSession._id)
+    .populate("lastMessage")
+    .populate(
+      "receipients.user",
+      "firstName lastName photo dialCode phone status"
+    )
+    .lean();
+  let otherUser =
+    chatSession.receipients.find(
+      (receipient) => receipient.user.toString() !== user._id.toString()
+    )?.user ?? {};
+
+  chatSession.otherUser = otherUser;
+  chatSession.title =
+    chatSession.type === "personal"
+      ? `${otherUser.firstName} ${otherUser.lastName}`
+      : chatSession.title;
+  chatSession.photo =
+    chatSession.type === "personal" ? otherUser.photo : chatSession.photo;
 
   return res.status(200).json({
     message: "Chat session created successfully",
