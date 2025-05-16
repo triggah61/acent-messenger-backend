@@ -107,10 +107,16 @@ exports.createChatSession = catchAsync(async (req, res) => {
     type: "required|string",
   });
 
-  const receipients = recepientIds.map((id) => ({
+  let receipients = recepientIds.map((id) => ({
     user: id,
     status: "active",
   }));
+
+  receipients.push({
+    user: user._id,
+    status: "active",
+    role: "admin",
+  });
 
   let chatSession = await ChatSession.create({
     receipients,
