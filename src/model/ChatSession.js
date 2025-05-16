@@ -47,6 +47,7 @@ const chatSessionSchema = new Schema(
         user: {
           type: Schema.Types.ObjectId,
           ref: "User",
+          default: null,
         },
         role: {
           type: String,
@@ -72,14 +73,14 @@ const chatSessionSchema = new Schema(
 
 chatSessionSchema.plugin(aggregatePaginate);
 
-// Ensure uniqueness for participant pairs (regardless of order)
-chatSessionSchema.index(
-  {
-    participants: 1,
-  },
-  {
-    unique: true,
-  }
-);
+// // Ensure uniqueness for participant pairs (regardless of order)
+// chatSessionSchema.index(
+//   {
+//     participants: 1,
+//   },
+//   {
+//     unique: true,
+//   }
+// );
 
 module.exports = mongoose.model("ChatSession", chatSessionSchema);

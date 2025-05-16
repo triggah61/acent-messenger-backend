@@ -16,15 +16,6 @@ exports.findChatSessionByReceipient = catchAsync(async (req, res) => {
     receipientId: "required|string",
   });
 
-  let checkContact = await User.findOne({
-    _id: user._id,
-    contacts: { $elemMatch: { user: receipientId, status: "active" } },
-  });
-
-  if (!checkContact) {
-    throw new AppError("Contact not found", 404);
-  }
-
   // Find a personal chat session where both users are recipients
   const chatSession = await ChatSession.findOne({
     type: "personal",
@@ -34,20 +25,70 @@ exports.findChatSessionByReceipient = catchAsync(async (req, res) => {
         { $elemMatch: { user: receipientId } },
       ],
     },
-  });
+  })
+    .populate("lastMessage")
+
+    .populate(
+      "receipients.user",
+      "firstName lastName photo dialCode phone status"
+    )
+    .lean();
 
   if (!chatSession) {
-    const newChatSession = await ChatSession.create({
+    console.log("chatSession not found", {
       type: "personal",
       receipients: [
         { user: user._id, status: "active" },
         { user: receipientId, status: "active" },
       ],
     });
+    let newChatSession = await ChatSession.create({
+      type: "personal",
+      receipients: [
+        { user: user._id, status: "active" },
+        { user: receipientId, status: "active" },
+      ],
+    });
+
+    newChatSession = await ChatSession.findById(newChatSession._id)
+      .populate("lastMessage")
+      .populate(
+        "receipients.user",
+        "firstName lastName photo dialCode phone status"
+      )
+      .lean();
+    let otherUser =
+      newChatSession.receipients.find(
+        (receipient) => receipient.user.toString() !== user._id.toString()
+      )?.user ?? {};
+
+    newChatSession.otherUser = otherUser;
+    newChatSession.title =
+      newChatSession.type === "personal"
+        ? `${otherUser.firstName} ${otherUser.lastName}`
+        : newChatSession.title;
+    newChatSession.photo =
+      newChatSession.type === "personal"
+        ? otherUser.photo
+        : newChatSession.photo;
+
     return res.status(200).json({
       message: "Chat session created successfully",
       data: newChatSession,
     });
+  } else {
+    let otherUser =
+      chatSession.receipients.find(
+        (receipient) => receipient.user?._id.toString() !== user._id.toString()
+      )?.user ?? {};
+
+    chatSession.otherUser = otherUser;
+    chatSession.title =
+      chatSession.type === "personal"
+        ? `${otherUser.firstName} ${otherUser.lastName}`
+        : chatSession.title;
+    chatSession.photo =
+      chatSession.type === "personal" ? otherUser.photo : chatSession.photo;
   }
 
   return res.status(200).json({
@@ -74,6 +115,7 @@ exports.createChatSession = catchAsync(async (req, res) => {
     receipients,
     title,
     createdBy: user._id,
+    type,
   });
 
   return res.status(200).json({
@@ -84,15 +126,18 @@ exports.createChatSession = catchAsync(async (req, res) => {
 
 exports.sessionList = catchAsync(async (req, res) => {
   const { user } = req;
-  const { page, limit } = req.query;
+  const { page, limit, type = "personal" } = req.query;
 
   let aggregate = ChatSession.aggregate([
     {
       $match: {
         receipients: { $elemMatch: { user: user._id } },
         // lastMessage: { $ne: null },
+
+        ...(type && { type }),
       },
     },
+
     {
       $lookup: {
         from: "messages",
@@ -155,6 +200,63 @@ exports.sessionList = catchAsync(async (req, res) => {
         },
       },
     },
+
+    {
+      $lookup: {
+        from: "users",
+        localField: "receipients.user",
+        foreignField: "_id",
+        as: "receipientUsers",
+        pipeline: [
+          {
+            $project: {
+              firstName: 1,
+              lastName: 1,
+              photo: 1,
+              dialCode: 1,
+              phone: 1,
+              _id: 1,
+              status: 1,
+            },
+          },
+        ],
+      },
+    },
+    {
+      $addFields: {
+        receipients: {
+          $map: {
+            input: "$receipients",
+            as: "receipient",
+            in: {
+              $mergeObjects: [
+                "$$receipient",
+                {
+                  user: {
+                    $arrayElemAt: [
+                      {
+                        $filter: {
+                          input: "$receipientUsers",
+                          as: "ru",
+                          cond: { $eq: ["$$ru._id", "$$receipient.user"] },
+                        },
+                      },
+                      0,
+                    ],
+                  },
+                },
+              ],
+            },
+          },
+        },
+      },
+    },
+    {
+      $project: {
+        receipientUsers: 0, // remove the temp array
+      },
+    },
+
     {
       $addFields: {
         photo: {

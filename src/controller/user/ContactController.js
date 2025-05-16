@@ -45,6 +45,26 @@ exports.findContact = catchAsync(async (req, res) => {
   });
 });
 
+exports.checkPhoneNumbers = catchAsync(async (req, res) => {
+  const { user } = req;
+  const { phoneNumbers } = req.body;
+
+  SimpleValidator(req.body, {
+    phoneNumbers: "required|array",
+  });
+
+  const existingUsers = await User.find({
+    $expr: {
+      $in: [{ $concat: ["$dialCode", "$phone"] }, phoneNumbers],
+    },
+  })
+    .select("firstName lastName phone dialCode photo username")
+    .lean();
+  console.log(existingUsers);
+
+  return res.status(200).json(existingUsers);
+});
+
 exports.sendRequest = catchAsync(async (req, res) => {
   const { user } = req;
   const { receiverId } = req.params;

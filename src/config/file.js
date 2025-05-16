@@ -26,10 +26,11 @@ exports.upload = async (file, uploadPath, name = uuidv4()) => {
     throw new AppError("File size exceeded!", 422);
   }
   // Extract the file extension
-  let extension = file.mimetype.split("/")[1];
-  if (extension.includes("svg")) {
-    extension = ".svg";
-  }
+  // let extension = file.mimetype.split("/")[1];
+  // if (extension.includes("svg")) {
+  //   extension = ".svg";
+  // }
+  let extension = path.extname(file.originalname);
 
   // Generate the file name
   let fileName = process.env?.AWS_S3_PARENT_FOLDER
