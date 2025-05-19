@@ -358,6 +358,7 @@ exports.sendMessage = catchAsync(async (req, res) => {
       url: file.Location,
       name: file.Key,
       size: file.Size,
+      criteria: "message",
     });
     attachmentIds.push(attachmentInfo._id);
   }

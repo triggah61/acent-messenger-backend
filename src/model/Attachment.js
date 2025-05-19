@@ -20,6 +20,11 @@ const attachmentSchema = new Schema(
       ref: "User",
       required: true,
     },
+    criteria: {
+      type: String,
+      enum: ["message", "profile", "cover", "story"],
+      default: "message",
+    },
     type: {
       type: String,
       enum: ["image", "video", "audio", "document", "sticker", "gif", null],

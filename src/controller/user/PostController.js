@@ -20,6 +20,7 @@ exports.createPost = catchAsync(async (req, res) => {
     url: file.Location,
     name: file.Key,
     size: file.Size,
+    criteria: "story",
   });
 
   const post = await Post.create({
