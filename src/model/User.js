@@ -52,19 +52,8 @@ const schema = new Schema(
 
     contacts: [
       {
-        user: {
-          type: Schema.Types.ObjectId,
-          ref: "User",
-        },
-        date: {
-          type: Date,
-          default: Date.now(),
-        },
-        status: {
-          type: String,
-          enum: ["sent", "received", "active", "rejected", "blocked"],
-          default: "sent",
-        },
+        type: Schema.Types.ObjectId,
+        ref: "User",
       },
     ],
     status: {

@@ -60,7 +60,9 @@ exports.checkPhoneNumbers = catchAsync(async (req, res) => {
   })
     .select("firstName lastName phone dialCode photo username")
     .lean();
-  console.log(existingUsers);
+
+  let ids = existingUsers.map((user) => user._id);
+  await User.updateOne({ _id: user._id }, { contacts: ids });
 
   return res.status(200).json(existingUsers);
 });
@@ -127,17 +129,18 @@ exports.getContacts = catchAsync(async (req, res) => {
 
   let aggregatedQuery = User.aggregate([
     {
-      $match: {
-        _id: user._id,
-        "contacts.status": status,
-      },
-    },
-    {
       $lookup: {
         from: "users",
-        localField: "contacts.user",
+        localField: "contacts",
         foreignField: "_id",
         as: "contacts",
+        pipeline: [
+          {
+            $match: {
+              status: "activated",
+            },
+          },
+        ],
       },
     },
     {

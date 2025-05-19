@@ -8,6 +8,7 @@ const Message = require("../../model/Message");
 const User = require("../../model/User");
 const SimpleValidator = require("../../validator/simpleValidator");
 const { pushNotification } = require("../../config/pusher");
+const { getFormattedReactions } = require("../../services/ChatService");
 exports.findChatSessionByReceipient = catchAsync(async (req, res) => {
   const { user } = req;
   const { receipientId } = req.params;
@@ -563,6 +564,15 @@ exports.toggleReaction = catchAsync(async (req, res) => {
   }
 
   await message.save();
+
+  // Get formatted reactions
+  const reactions = await getFormattedReactions(messageId);
+
+  // Emit via socket
+  io.to(message.chatSession.toString()).emit("message_reactions_updated", {
+    messageId,
+    reactions,
+  });
 
   return res.status(200).json({
     message: "Message reacted successfully",
