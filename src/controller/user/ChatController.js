@@ -502,6 +502,27 @@ exports.getMessages = catchAsync(async (req, res) => {
       },
     },
     {
+      $lookup: {
+        from: "messages",
+        localField: "replyTo",
+        foreignField: "_id",
+        as: "replyTo",
+        pipeline: [
+          {
+            $project: {
+              content: 1,
+            },
+          },
+        ],
+      },
+    },
+    {
+      $unwind: {
+        path: "$replyTo",
+        preserveNullAndEmptyArrays: true,
+      },
+    },
+    {
       $sort: {
         createdAt: -1,
       },
