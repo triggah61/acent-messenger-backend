@@ -51,6 +51,22 @@ const messageSchema = new Schema(
       ref: "Message",
       default: null,
     },
+    reactions: [
+      {
+        reaction: {
+          type: String,
+          enum: ["like", "love", "laugh", "sad", "angry", "wow", "cry"],
+        },
+        reactedBy: {
+          type: Schema.Types.ObjectId,
+          ref: "User",
+        },
+        reactedAt: {
+          type: Date,
+          default: Date.now,
+        },
+      },
+    ],
   },
   {
     timestamps: true,

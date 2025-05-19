@@ -278,11 +278,6 @@ exports.sessionList = catchAsync(async (req, res) => {
         },
       },
     },
-    {
-      $project: {
-        receipientUsers: 0, // remove the temp array
-      },
-    },
 
     {
       $addFields: {
@@ -321,7 +316,7 @@ exports.sessionList = catchAsync(async (req, res) => {
 
 exports.sendMessage = catchAsync(async (req, res) => {
   const { user } = req;
-  const { chatSessionId, message } = req.body;
+  const { chatSessionId, message, replyTo } = req.body;
 
   const attachments = req.files;
 
@@ -371,6 +366,7 @@ exports.sendMessage = catchAsync(async (req, res) => {
     content: message,
     attachments: attachmentIds,
     sender: user._id,
+    replyTo,
   });
 
   await ChatSession.findByIdAndUpdate(chatSessionId, {
@@ -382,6 +378,7 @@ exports.sendMessage = catchAsync(async (req, res) => {
   messageInfo = await Message.findById(messageInfo._id)
     .populate("attachments")
     .populate("sender", "firstName lastName photo dialCode phone")
+    .populate("replyTo", "content")
     .lean();
 
   io.to(chatSessionId).emit("new_message", messageInfo);
@@ -410,6 +407,63 @@ exports.getMessages = catchAsync(async (req, res) => {
     {
       $match: {
         chatSession: new Types.ObjectId(chatSessionId),
+      },
+    },
+    {
+      $unwind: {
+        path: "$reactions",
+        preserveNullAndEmptyArrays: true,
+      },
+    },
+    {
+      $lookup: {
+        from: "users",
+        localField: "reactions.reactedBy",
+        foreignField: "_id",
+        as: "reactionUser",
+      },
+    },
+    {
+      $unwind: {
+        path: "$reactionUser",
+        preserveNullAndEmptyArrays: true,
+      },
+    },
+    {
+      $group: {
+        _id: {
+          messageId: "$_id",
+          reaction: "$reactions.reaction",
+        },
+        users: {
+          $push: {
+            _id: "$reactionUser._id",
+            firstName: "$reactionUser.firstName",
+            lastName: "$reactionUser.lastName",
+            reaction: "$reactions.reaction",
+            reactedAt: "$reactions.reactedAt",
+          },
+        },
+        doc: { $first: "$$ROOT" },
+      },
+    },
+    {
+      $group: {
+        _id: "$_id.messageId",
+        reactions: {
+          $push: {
+            reaction: "$_id.reaction",
+            users: "$users",
+          },
+        },
+        doc: { $first: "$doc" },
+      },
+    },
+    {
+      $replaceRoot: {
+        newRoot: {
+          $mergeObjects: ["$doc", { reactions: "$reactions" }],
+        },
       },
     },
     {
@@ -457,8 +511,61 @@ exports.getMessages = catchAsync(async (req, res) => {
     limit: parseInt(limit),
   });
 
+
+  records.docs = await Promise.all(
+    records.docs.map(async (record) => {
+      delete record.reactionUser;
+
+      let reactions = record.reactions?.filter(
+        (reaction) => reaction?.reaction
+      );
+
+      console.log("reactions", reactions);
+      delete record.reactions;
+
+      return { ...record, reactions };
+    })
+  );
   return res.status(200).json({
     message: "Messages fetched successfully",
     data: records,
+  });
+});
+
+exports.toggleReaction = catchAsync(async (req, res) => {
+  const { user } = req;
+  const { messageId, reactionType } = req.body;
+  console.log("req.body", req.body);
+
+  const message = await Message.findById(messageId);
+
+  if (!message) {
+    throw new AppError("Message not found", 404);
+  }
+
+  const reaction = message.reactions.find(
+    (reaction) =>
+      // reaction.reaction === reactionType &&
+      reaction.reactedBy.toString() === user._id.toString()
+  );
+
+  if (reaction) {
+    message.reactions = message.reactions.filter(
+      (reaction) => reaction.reactedBy.toString() !== user._id.toString()
+    );
+  }
+
+  if (!reaction || (reaction && reactionType !== reaction?.reaction)) {
+    message.reactions.push({
+      reaction: reactionType,
+      reactedBy: user._id,
+    });
+  }
+
+  await message.save();
+
+  return res.status(200).json({
+    message: "Message reacted successfully",
+    data: message,
   });
 });
