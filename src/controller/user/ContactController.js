@@ -145,6 +145,7 @@ exports.getContacts = catchAsync(async (req, res) => {
           {
             $match: {
               status: "activated",
+              _id: { $ne: user._id },
             },
           },
         ],
