@@ -58,6 +58,14 @@ exports.findChatSessionByReceipient = catchAsync(async (req, res) => {
         "firstName lastName photo dialCode phone status"
       )
       .lean();
+
+    io.local.emit(
+      "new_chat_session",
+      newChatSession.receipients?.map((receipient) => {
+        return receipient.user?._id ?? null;
+      })
+    );
+
     let otherUser =
       newChatSession.receipients.find(
         (receipient) => receipient.user._id.toString() !== user._id.toString()
@@ -145,6 +153,13 @@ exports.createChatSession = catchAsync(async (req, res) => {
       : chatSession.title;
   chatSession.photo =
     chatSession.type === "personal" ? otherUser.photo : chatSession.photo;
+
+  io.local.emit(
+    "new_chat_session",
+    chatSession.receipients?.map((receipient) => {
+      return receipient.user?._id ?? null;
+    })
+  );
 
   return res.status(200).json({
     message: "Chat session created successfully",
@@ -533,7 +548,6 @@ exports.getMessages = catchAsync(async (req, res) => {
     page: parseInt(page),
     limit: parseInt(limit),
   });
-
 
   records.docs = await Promise.all(
     records.docs.map(async (record) => {
