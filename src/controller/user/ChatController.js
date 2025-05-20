@@ -60,7 +60,7 @@ exports.findChatSessionByReceipient = catchAsync(async (req, res) => {
       .lean();
     let otherUser =
       newChatSession.receipients.find(
-        (receipient) => receipient.user.toString() !== user._id.toString()
+        (receipient) => receipient.user._id.toString() !== user._id.toString()
       )?.user ?? {};
 
     newChatSession.otherUser = otherUser;

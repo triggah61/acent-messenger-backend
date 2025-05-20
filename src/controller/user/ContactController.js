@@ -127,7 +127,14 @@ exports.getContacts = catchAsync(async (req, res) => {
   page = parseInt(page);
   limit = parseInt(limit);
 
+
+
   let aggregatedQuery = User.aggregate([
+    {
+      $match: {
+        _id: user._id,
+      },
+    },
     {
       $lookup: {
         from: "users",
@@ -177,6 +184,10 @@ exports.getContacts = catchAsync(async (req, res) => {
       },
     },
   ]);
+
+  if (limit == -1) {
+    limit = 999999;
+  }
 
   let contacts = await User.aggregatePaginate(aggregatedQuery, {
     page,
