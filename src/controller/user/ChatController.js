@@ -543,7 +543,6 @@ exports.getMessages = catchAsync(async (req, res) => {
         (reaction) => reaction?.reaction
       );
 
-      console.log("reactions", reactions);
       delete record.reactions;
 
       return { ...record, reactions };
