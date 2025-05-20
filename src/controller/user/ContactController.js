@@ -9,7 +9,7 @@ exports.sendInvitation = catchAsync(async (req, res) => {
   const { phone, dialCode } = req.body;
   SimpleValidator(req.body, {
     phone: "required|string",
-    dialCode: "required|string",
+    // dialCode: "required|string",
   });
   const invitedUser = await User.findOne({ phone });
   if (invitedUser) {
