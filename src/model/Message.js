@@ -56,6 +56,7 @@ const messageSchema = new Schema(
         reaction: {
           type: String,
           enum: ["like", "love", "laugh", "sad", "angry", "wow", "cry"],
+          default: "like",
         },
         reactedBy: {
           type: Schema.Types.ObjectId,
