@@ -1,4 +1,3 @@
-
 const catchAsync = require("../exception/catchAsync");
 const authRouter = require("./api/admin/auth");
 const configRouter = require("./api/admin/config");
@@ -15,6 +14,7 @@ router.group("/api", (api) => {
   api.use(securityRouter);
   api.use(adminRouter);
   api.use(userRouter);
+  // api.use("/wallet", walletRouter);
   api.get(
     "/",
     catchAsync(async (req, res) => {

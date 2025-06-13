@@ -4,6 +4,7 @@ const contactRouter = require("./contact");
 const chatRouter = require("./chat");
 const postRouter = require("./post");
 const profileRouter = require("../admin/profile");
+const walletRouter = require("./wallet");
 const userRouter = express.Router();
 require("express-group-routes");
 
@@ -13,6 +14,7 @@ userRouter.group("/user", (user) => {
   user.use(contactRouter);
   user.use(chatRouter);
   user.use(postRouter);
+  user.use(walletRouter);
   user.get("/", (req, res) => {
     res.json({
       message: "User route",
