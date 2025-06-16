@@ -122,9 +122,9 @@ class BitcoinWalletService {
 
     // Fee configurations (in satoshis per byte)
     this.feeRates = {
-      low: 1,
-      medium: 5,
-      high: 10,
+      low: 5,
+      medium: 15,
+      high: 30,
       custom: parseInt(process.env.CUSTOM_FEE_RATE) || 5,
     };
 
@@ -336,7 +336,7 @@ class BitcoinWalletService {
    * Calculate platform fee
    */
   calculatePlatformFee(amount) {
-    return Math.floor(amount * this.platformFeePercentage);
+    return amount * (this.platformFeePercentage / 100);
   }
 
   /**

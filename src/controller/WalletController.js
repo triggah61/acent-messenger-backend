@@ -34,16 +34,22 @@ exports.walletInformation = catchAsync(async (req, res) => {
   const wallet = await Wallet.findOne({ userId });
 
   if (!wallet) {
-    throw new AppError("Wallet not found", 404);
+    throw new AppError("Wallet not found", 400);
   }
 
   const balance = await bitcoinWalletService.getWalletBalance(wallet.address);
+  console.log(balance);
   let availableBalance = Number(balance.balance);
 
   if (Number(balance.unconfirmedBalance) < 0) {
     availableBalance += Number(balance.unconfirmedBalance);
   }
 
+  let btcBalance = bitcoinWalletService.satoshisToBTC(availableBalance);
+
+  let btcPrice = await bitcoinWalletService.getBitcoinPrice("USD");
+
+  let usdBalance = btcPrice * btcBalance;
 
   res.status(200).json({
     success: true,
@@ -55,9 +61,11 @@ exports.walletInformation = catchAsync(async (req, res) => {
       createdAt: wallet.createdAt,
       lastUsed: wallet.lastUsed,
       network: wallet.network,
-      balance: balance,
+      // balance: balance,
       availableBalance: availableBalance,
-      networkFee,
+      btcBalance: btcBalance,
+      usdBalance: usdBalance,
+      // networkFee,
       platformFeePercentage: bitcoinWalletService.platformFeePercentage,
     },
   });
@@ -72,7 +80,8 @@ exports.sendTransaction = catchAsync(async (req, res) => {
     amount: "required|numeric",
     priority: "required|in:low,medium,high,custom",
   });
-  const { walletId, toAddress, amount, priority, description } = req.body;
+  console.log(req.body);
+  let { walletId, toAddress, amount, priority, description } = req.body;
   const userId = req.user._id;
 
   // Verify wallet belongs to user
@@ -90,10 +99,10 @@ exports.sendTransaction = catchAsync(async (req, res) => {
   }
 
   // Convert amount to satoshis if provided in BTC
-  const amountInSatoshis =
-    typeof amount === "number" && amount < 1
-      ? bitcoinWalletService.btcToSatoshis(amount)
-      : amount;
+  let amountInSatoshis = amount;
+  if (typeof amount === "number" && amount < 1) {
+    amountInSatoshis = bitcoinWalletService.btcToSatoshis(amount);
+  }
 
   // Additional security: Log transaction attempt
   console.log(
@@ -143,10 +152,10 @@ exports.getTransactionHistory = async (req, res, next) => {
   try {
     const { walletId } = req.params;
     const { page = 1, limit = 10, type, status } = req.query;
-    const userId = req.user.id;
+    const userId = req.user._id;
 
     // Verify wallet belongs to user
-    const wallet = await Wallet.findOne({ _id: walletId, userId });
+    const wallet = await Wallet.findOne({ userId });
     if (!wallet) {
       return next(new AppError("Wallet not found or access denied", 404));
     }
@@ -229,7 +238,7 @@ exports.getTransactionHistory = async (req, res, next) => {
 exports.getTransactionDetails = async (req, res, next) => {
   try {
     const { transactionId } = req.params;
-    const userId = req.user.id;
+    const userId = req.user._id;
 
     const transaction = await Transaction.findOne({
       _id: transactionId,
@@ -307,14 +316,14 @@ exports.getTransactionDetails = async (req, res, next) => {
  */
 exports.estimateTransactionFee = async (req, res, next) => {
   try {
-    const { walletId, amount, priority = "medium" } = req.body;
-    const userId = req.user.id;
+    const { amount } = req.body;
+    const userId = req.user._id;
+
+    console.log("amount", amount);
 
     // Verify wallet belongs to user
     const wallet = await Wallet.findOne({
-      _id: walletId,
       userId,
-      status: "active",
     });
     if (!wallet) {
       return next(new AppError("Wallet not found or access denied", 404));
@@ -325,46 +334,69 @@ exports.estimateTransactionFee = async (req, res, next) => {
     const inputCount = Math.min(utxos.length, 10); // Limit to 10 inputs for estimation
 
     // Calculate fees
-    const networkFee = bitcoinWalletService.calculateTransactionFee(
-      inputCount,
-      2,
-      priority
-    );
-    const platformFee = bitcoinWalletService.calculatePlatformFee(amount);
-    const totalFees = networkFee + platformFee;
+    const networkFee = {
+      low: bitcoinWalletService.calculateTransactionFee(inputCount, 2, "low"),
+      medium: bitcoinWalletService.calculateTransactionFee(
+        inputCount,
+        2,
+        "medium"
+      ),
+      high: bitcoinWalletService.calculateTransactionFee(inputCount, 2, "high"),
+    };
+
+    let fees = {
+      low: {
+        network: {
+          satoshis: networkFee.low,
+          btc: bitcoinWalletService.satoshisToBTC(networkFee.low),
+        },
+        platform: {
+          satoshis:
+            bitcoinWalletService.btcToSatoshis(
+              bitcoinWalletService.calculatePlatformFee(amount)
+            ),
+          btc: bitcoinWalletService.calculatePlatformFee(amount),
+        },
+      },
+      medium: {
+        network: {
+          satoshis: networkFee.medium,
+          btc: bitcoinWalletService.satoshisToBTC(networkFee.medium),
+        },
+        platform: {
+          satoshis:
+            bitcoinWalletService.btcToSatoshis(
+              bitcoinWalletService.calculatePlatformFee(amount)
+            ),
+          btc: bitcoinWalletService.calculatePlatformFee(amount),
+        },
+      },
+      high: {
+        network: {
+          satoshis: networkFee.high,
+          btc: bitcoinWalletService.satoshisToBTC(networkFee.high),
+        },
+        platform: {
+          satoshis:
+            bitcoinWalletService.btcToSatoshis(
+              bitcoinWalletService.calculatePlatformFee(amount)
+            ),
+          btc: bitcoinWalletService.calculatePlatformFee(amount),
+        },
+      },
+    };
 
     res.status(200).json({
       success: true,
       message: "Transaction fees estimated successfully",
       data: {
-        fees: {
-          network: {
-            satoshis: networkFee,
-            btc: bitcoinWalletService.satoshisToBTC(networkFee),
-          },
-          platform: {
-            satoshis: platformFee,
-            btc: bitcoinWalletService.satoshisToBTC(platformFee),
-            percentage:
-              (bitcoinWalletService.platformFeePercentage * 100).toFixed(2) +
-              "%",
-          },
-          total: {
-            satoshis: totalFees,
-            btc: bitcoinWalletService.satoshisToBTC(totalFees),
-          },
+        fees,
+
+        estimatedConfirmationTime: {
+          low: "60-120 minutes",
+          medium: "10-30 minutes",
+          high: "5-15 minutes",
         },
-        totalRequired: {
-          satoshis: amount + totalFees,
-          btc: bitcoinWalletService.satoshisToBTC(amount + totalFees),
-        },
-        priority,
-        estimatedConfirmationTime:
-          {
-            low: "60-120 minutes",
-            medium: "10-30 minutes",
-            high: "5-15 minutes",
-          }[priority] || "10-30 minutes",
       },
     });
   } catch (error) {
@@ -426,7 +458,7 @@ exports.validateAddress = async (req, res, next) => {
 exports.getWalletStatistics = async (req, res, next) => {
   try {
     const { walletId } = req.params;
-    const userId = req.user.id;
+    const userId = req.user._id;
 
     // Verify wallet belongs to user
     const wallet = await Wallet.findOne({ _id: walletId, userId });
