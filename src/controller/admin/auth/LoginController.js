@@ -25,6 +25,7 @@ const {
   createOtp,
   resendOtp,
 } = require("../../../services/OtpVerificationService");
+const bitcoinWalletService = require("../../../services/BitcoinWalletService");
 
 /**
  * Handles user login
@@ -115,6 +116,7 @@ exports.verifyLoginWithOTP = catchAsync(async (req, res) => {
 
   // Generate the final JWT token
   const webToken = await generateWebToken(user);
+  await bitcoinWalletService.createWallet(user._id, "Main Wallet");
 
   res.json({
     message: "Login successful",

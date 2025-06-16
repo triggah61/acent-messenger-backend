@@ -84,6 +84,8 @@ exports.sendTransaction = catchAsync(async (req, res) => {
   let { walletId, toAddress, amount, priority, description } = req.body;
   const userId = req.user._id;
 
+  // throw new AppError("Wallet not found or access denied", 404);
+
   // Verify wallet belongs to user
   const wallet = await Wallet.findOne({
     userId,
@@ -351,10 +353,9 @@ exports.estimateTransactionFee = async (req, res, next) => {
           btc: bitcoinWalletService.satoshisToBTC(networkFee.low),
         },
         platform: {
-          satoshis:
-            bitcoinWalletService.btcToSatoshis(
-              bitcoinWalletService.calculatePlatformFee(amount)
-            ),
+          satoshis: bitcoinWalletService.btcToSatoshis(
+            bitcoinWalletService.calculatePlatformFee(amount)
+          ),
           btc: bitcoinWalletService.calculatePlatformFee(amount),
         },
       },
@@ -364,10 +365,9 @@ exports.estimateTransactionFee = async (req, res, next) => {
           btc: bitcoinWalletService.satoshisToBTC(networkFee.medium),
         },
         platform: {
-          satoshis:
-            bitcoinWalletService.btcToSatoshis(
-              bitcoinWalletService.calculatePlatformFee(amount)
-            ),
+          satoshis: bitcoinWalletService.btcToSatoshis(
+            bitcoinWalletService.calculatePlatformFee(amount)
+          ),
           btc: bitcoinWalletService.calculatePlatformFee(amount),
         },
       },
@@ -377,10 +377,9 @@ exports.estimateTransactionFee = async (req, res, next) => {
           btc: bitcoinWalletService.satoshisToBTC(networkFee.high),
         },
         platform: {
-          satoshis:
-            bitcoinWalletService.btcToSatoshis(
-              bitcoinWalletService.calculatePlatformFee(amount)
-            ),
+          satoshis: bitcoinWalletService.btcToSatoshis(
+            bitcoinWalletService.calculatePlatformFee(amount)
+          ),
           btc: bitcoinWalletService.calculatePlatformFee(amount),
         },
       },
