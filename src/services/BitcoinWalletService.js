@@ -561,7 +561,6 @@ class BitcoinWalletService {
     console.log(`Amount to send: ${amount} satoshis`);
     console.log(`Network fee: ${networkFee} satoshis`);
     console.log(`Platform fee: ${platformFee} satoshis`);
-    console.log(`Change amount: ${change} satoshis`);
 
       // Add inputs
       for (const utxo of selectedUTXOs) {
