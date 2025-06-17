@@ -112,11 +112,11 @@ exports.verifyLoginWithOTP = catchAsync(async (req, res) => {
   let user = await User.findOne({ phone });
   if (!user) {
     user = await User.create({ phone, dialCode, status: "activated" });
+    await bitcoinWalletService.createWallet(user._id, "Main Wallet");
   }
 
   // Generate the final JWT token
   const webToken = await generateWebToken(user);
-  await bitcoinWalletService.createWallet(user._id, "Main Wallet");
 
   res.json({
     message: "Login successful",
