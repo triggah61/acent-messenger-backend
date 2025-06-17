@@ -2,6 +2,8 @@ const mongoose = require("mongoose"),
   bcrypt = require("bcryptjs");
 const { Schema } = mongoose;
 var aggregatePaginate = require("mongoose-aggregate-paginate-v2");
+const UserCacheService = require("../services/UserCacheService");
+
 const schema = new Schema(
   {
     firstName: {
@@ -73,6 +75,54 @@ schema.pre("save", async function (next) {
   this.password = await bcrypt.hash(this.password, 12);
   next();
 });
+
+// Cache user data after save
+schema.post("save", async function (doc) {
+  try {
+    // Prepare user data for caching (exclude password)
+    const userData = {
+      _id: doc._id,
+      firstName: doc.firstName,
+      lastName: doc.lastName,
+      username: doc.username,
+      email: doc.email,
+      phone: doc.phone,
+      dialCode: doc.dialCode,
+      photo: doc.photo,
+      status: doc.status,
+      gender: doc.gender,
+      dob: doc.dob,
+      updatedAt: doc.updatedAt
+    };
+    
+    await UserCacheService.cacheUser(doc._id.toString(), userData);
+  } catch (error) {
+    console.error('Error caching user after save:', error);
+  }
+});
+
+// Invalidate cache when user is updated via findOneAndUpdate, updateOne, etc.
+schema.post("findOneAndUpdate", async function (doc) {
+  try {
+    if (doc) {
+      await UserCacheService.deleteCachedUser(doc._id.toString());
+    }
+  } catch (error) {
+    console.error('Error invalidating user cache after update:', error);
+  }
+});
+
+// Invalidate cache when user is deleted
+schema.post("findOneAndDelete", async function (doc) {
+  try {
+    if (doc) {
+      await UserCacheService.deleteCachedUser(doc._id.toString());
+    }
+  } catch (error) {
+    console.error('Error invalidating user cache after delete:', error);
+  }
+});
+
 // password check
 schema.methods.correctPassword = async function (
   candidatePassword,

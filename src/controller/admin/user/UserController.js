@@ -22,6 +22,7 @@ const User = require("../../../model/User");
 const dateQueryGenerator = require("../../../utils/dateQueryGenerator");
 const SimpleValidator = require("../../../validator/simpleValidator");
 const { upload, deleteFileByPath } = require("../../../config/file");
+const UserCacheService = require("../../../services/UserCacheService");
 
 /**
  * Creates a new user
@@ -260,6 +261,9 @@ exports.updateUser = catchAsync(async (req, res) => {
   }
 
   await user.save();
+
+  // Invalidate cache after update
+  await UserCacheService.deleteCachedUser(userId);
 
   res.json({
     message: "User updated successfully",

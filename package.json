@@ -37,6 +37,7 @@
     "pug": "^3.0.2",
     "pusher": "^5.2.0",
     "qrcode": "^1.5.4",
+    "redis": "^4.6.12",
     "socket.io": "^4.8.1",
     "speakeasy": "^2.0.0",
     "tiny-secp256k1": "^2.2.3",

@@ -19,6 +19,13 @@ const cors = require("cors");
 require("dotenv").config();
 require("./src/config/db");
 
+// Initialize Redis connection
+const redisConfig = require("./src/config/redis");
+redisConfig.connect().catch(error => {
+  console.error("Failed to connect to Redis:", error);
+  console.log("Application will continue without Redis caching");
+});
+
 if (process.env.RUN_SCHEDULER === "yes") {
   console.log("Scheduler is enabled!");
   require("./src/cronJob");

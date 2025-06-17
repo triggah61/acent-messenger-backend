@@ -17,6 +17,7 @@ const AppError = require("../../../exception/AppError");
 const catchAsync = require("../../../exception/catchAsync");
 const User = require("../../../model/User");
 const SimpleValidator = require("../../../validator/simpleValidator");
+const UserCacheService = require("../../../services/UserCacheService");
 
 /**
  * Retrieves the profile information of the authenticated user
@@ -72,6 +73,8 @@ exports.updateProfile = catchAsync(async (req, res) => {
 
   const { firstName, lastName, email, phone, gender, dob } = req.body;
 
+  console.log(req.body);
+
   // 2. Find the user by ID
   user = await User.findById(user._id);
   if (!user) {
@@ -101,7 +104,10 @@ exports.updateProfile = catchAsync(async (req, res) => {
   // 4. Save the updated user
   await user.save();
 
-  // 5. Send response
+  // 5. Invalidate cache after update
+  await UserCacheService.deleteCachedUser(user._id.toString());
+
+  // 6. Send response
   res.json({
     message: "Profile updated successfully",
     data: {
@@ -132,6 +138,10 @@ exports.uploadPhoto = catchAsync(async (req, res) => {
   const { Key } = uploadData;
   user.photo = Key;
   await user.save();
+
+  // Invalidate cache after photo update
+  await UserCacheService.deleteCachedUser(user._id.toString());
+
   res.json({
     message: "Profile photo uploaded successfully",
     data: {

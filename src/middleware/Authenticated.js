@@ -2,9 +2,8 @@
  * Middleware function that authenticates a user based on a Bearer token in the request headers.
  *
  * This middleware function is responsible for verifying the JWT token in the request headers and
- * ensuring that the user is authenticated and active. If the token is valid and the user is
- * activated, the middleware will attach the user object and the token to the request object,
- * allowing subsequent middleware functions to access this information.
+ * ensuring that the user is authenticated and active. It first checks Redis cache for user data
+ * to improve performance, and falls back to database lookup if cache miss occurs.
  *
  * If the token is missing, invalid, or the user is not activated, the middleware will throw an
  * appropriate error with a 401 Unauthorized status code.
@@ -18,10 +17,13 @@ const jwt = require("jsonwebtoken");
 const catchAsync = require("../exception/catchAsync");
 const AppError = require("../exception/AppError");
 const User = require("../model/User");
+const UserCacheService = require("../services/UserCacheService");
+
 module.exports = catchAsync(async (req, res, next) => {
   const secret = process.env.JWT_SECRET;
   let authenticated = false;
   let token = null;
+  
   if (
     req.headers.authorization &&
     req.headers.authorization.startsWith("Bearer")
@@ -32,16 +34,34 @@ module.exports = catchAsync(async (req, res, next) => {
   if (!token) {
     throw new AppError("Bearer token is required", 401);
   }
+  
   try {
     var decoded = await jwt.verify(token, secret);
     let { id, roleType } = decoded;
-    let user = await User.findById(id)
-      .select("firstName lastName username email phone dialCode photo status gender dob")
-      .lean();
+    let user = null;
+
+    // First try to get user from Redis cache
+    user = await UserCacheService.getCachedUser(id);
+    
+    if (!user) {
+      // Cache miss - fetch from database
+      console.log(`Cache miss for user ${id}, fetching from database`);
+      user = await User.findById(id)
+        .select("firstName lastName username email phone dialCode photo status gender dob")
+        .lean();
+        
+      if (user) {
+        // Cache the user data for future requests
+        await UserCacheService.cacheUser(id, user);
+      }
+    } else {
+      console.log(`Cache hit for user ${id}`);
+    }
+
     if (!user) {
       return next(
         new AppError(
-          "The user belonging to this takes does no longer exist",
+          "The user belonging to this token does no longer exist",
           401
         )
       );
@@ -57,7 +77,7 @@ module.exports = catchAsync(async (req, res, next) => {
   } catch (error) {
     console.log(error.message);
     return next(
-      new AppError("The user belonging to this takes does no longer exist", 401)
+      new AppError("The user belonging to this token does no longer exist", 401)
     );
   }
 

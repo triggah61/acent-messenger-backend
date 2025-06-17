@@ -14,6 +14,7 @@
  * @requires ../../../validator/simpleValidator
  * @requires ../../../events/TwoFAChanged
  * @requires ../../../events/PasswordChanged
+ * @requires ../../../services/UserCacheService
  */
 
 const catchAsync = require("../../../exception/catchAsync");
@@ -25,6 +26,7 @@ const bcrypt = require("bcryptjs");
 const SimpleValidator = require("../../../validator/simpleValidator");
 const TwoFAChanged = require("../../../events/TwoFAChanged");
 const PasswordChanged = require("../../../events/PasswordChanged");
+const UserCacheService = require("../../../services/UserCacheService");
 
 /**
  * Initiates the setup process for Google Authenticator
@@ -124,6 +126,9 @@ exports.toggleAuthenticatorStatus = catchAsync(async (req, res) => {
     user.googleAuthenticator = "off";
     await user.save();
 
+    // Invalidate cache after security update
+    await UserCacheService.deleteCachedUser(userId.toString());
+
     TwoFAChanged(user);
 
     res.json({
@@ -153,6 +158,9 @@ exports.toggleAuthenticatorStatus = catchAsync(async (req, res) => {
     // Enable Google Authenticator
     user.googleAuthenticator = "on";
     await user.save();
+
+    // Invalidate cache after security update
+    await UserCacheService.deleteCachedUser(userId.toString());
 
     TwoFAChanged(user);
 
@@ -209,6 +217,9 @@ exports.changePassword = catchAsync(async (req, res) => {
   user = await User.findByIdAndUpdate(user._id);
   user.password = newPassword;
   await user.save();
+
+  // Invalidate cache after password change
+  await UserCacheService.deleteCachedUser(user._id.toString());
 
   PasswordChanged(user);
 
