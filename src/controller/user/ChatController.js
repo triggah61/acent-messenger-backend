@@ -178,7 +178,6 @@ exports.sessionList = catchAsync(async (req, res) => {
       $match: {
         receipients: { $elemMatch: { user: new Types.ObjectId(user._id) } },
         // lastMessage: { $ne: null },
-
         ...(type && { type }),
       },
     },
@@ -197,55 +196,8 @@ exports.sessionList = catchAsync(async (req, res) => {
         preserveNullAndEmptyArrays: true,
       },
     },
-    // Add lookup for other user in personal chats
-    {
-      $lookup: {
-        from: "users",
-        let: { receipients: "$receipients" },
-        pipeline: [
-          {
-            $match: {
-              $expr: {
-                $and: [
-                  { $in: ["$_id", "$$receipients.user"] },
-                  { $ne: ["$_id", user._id] },
-                ],
-              },
-            },
-          },
-          {
-            $project: {
-              firstName: 1,
-              lastName: 1,
-              photo: 1,
-              dialCode: 1,
-              phone: 1,
-              _id: 1,
-              status: 1,
-            },
-          },
-        ],
-        as: "otherUser",
-      },
-    },
-    {
-      $addFields: {
-        title: {
-          $cond: {
-            if: { $eq: ["$type", "personal"] },
-            then: {
-              $concat: [
-                { $arrayElemAt: ["$otherUser.firstName", 0] },
-                " ",
-                { $arrayElemAt: ["$otherUser.lastName", 0] },
-              ],
-            },
-            else: "$title",
-          },
-        },
-      },
-    },
 
+    // Lookup for recipients user details
     {
       $lookup: {
         from: "users",
@@ -267,6 +219,8 @@ exports.sessionList = catchAsync(async (req, res) => {
         ],
       },
     },
+    
+    // Map recipients with their user details
     {
       $addFields: {
         receipients: {
@@ -297,26 +251,72 @@ exports.sessionList = catchAsync(async (req, res) => {
       },
     },
 
+    // Add otherUser field for personal chats (the user who is NOT the current user)
+    {
+      $addFields: {
+        otherUser: {
+          $cond: {
+            if: { $eq: ["$type", "personal"] },
+            then: {
+              $arrayElemAt: [
+                {
+                  $filter: {
+                    input: "$receipientUsers",
+                    as: "ru",
+                    cond: { $ne: ["$$ru._id", new Types.ObjectId(user._id)] },
+                  },
+                },
+                0,
+              ],
+            },
+            else: null,
+          },
+        },
+      },
+    },
+
+    // Set title based on chat type
+    {
+      $addFields: {
+        title: {
+          $cond: {
+            if: { $eq: ["$type", "personal"] },
+            then: {
+              $concat: [
+                "$otherUser.firstName",
+                " ",
+                "$otherUser.lastName",
+              ],
+            },
+            else: "$title",
+          },
+        },
+      },
+    },
+
+    // Set photo based on chat type
     {
       $addFields: {
         photo: {
           $cond: {
             if: { $eq: ["$type", "personal"] },
-            then: { $arrayElemAt: ["$otherUser.photo", 0] },
+            then: "$otherUser.photo",
             else: "$photo",
           },
         },
       },
     },
+
+    // Remove temporary field
     {
-      $unwind: {
-        path: "$otherUser",
-        preserveNullAndEmptyArrays: true,
+      $project: {
+        receipientUsers: 0,
       },
     },
+
     {
       $sort: {
-        createdAt: -1,
+        updatedAt: -1, // Sort by updatedAt to show most recent chats first
       },
     },
   ]);
