@@ -98,7 +98,7 @@ exports.updateProfile = catchAsync(async (req, res) => {
     user.gender = gender;
   }
   if (dob) {
-    user.dob = dob;
+    user.dob = new Date(dob);
   }
 
   // 4. Save the updated user
