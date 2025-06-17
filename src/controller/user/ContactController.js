@@ -3,6 +3,7 @@ const AppError = require("../../exception/AppError");
 const catchAsync = require("../../exception/catchAsync");
 const User = require("../../model/User");
 const SimpleValidator = require("../../validator/simpleValidator");
+const { createPhoneMatchingPipeline, isValidPhoneNumber } = require("../../utils/phoneNumberUtils");
 
 exports.sendInvitation = catchAsync(async (req, res) => {
   const { user } = req;
@@ -33,9 +34,41 @@ exports.findContact = catchAsync(async (req, res) => {
   SimpleValidator(req.body, {
     phone: "required|string",
   });
-  let contacts = await User.find({ phone })
-    .select("phone dialCode firstName lastName photo username")
-    .lean();
+
+  // Use the phone matching pipeline for a single phone number
+  const phoneToSearch = dialCode ? `${dialCode}${phone}` : phone;
+  const matchingPipeline = createPhoneMatchingPipeline([phoneToSearch]);
+  
+  if (matchingPipeline.length === 0) {
+    throw new AppError("Invalid phone number format", 400);
+  }
+
+  // Build aggregation pipeline
+  const aggregationPipeline = [
+    // First match users with activated status
+    {
+      $match: {
+        status: "activated"
+      }
+    },
+    // Apply phone matching pipeline
+    ...matchingPipeline,
+    // Select required fields including searchedPhone
+    {
+      $project: {
+        phone: 1,
+        dialCode: 1,
+        firstName: 1,
+        lastName: 1,
+        photo: 1,
+        username: 1,
+        searchedPhone: 1  // Include the searched phone number
+      }
+    }
+  ];
+
+  let contacts = await User.aggregate(aggregationPipeline);
+
   if (contacts.length === 0) {
     throw new AppError("User not found", 404);
   }
@@ -53,18 +86,55 @@ exports.checkPhoneNumbers = catchAsync(async (req, res) => {
     phoneNumbers: "required|array",
   });
 
-  const existingUsers = await User.find({
-    $expr: {
-      $in: [{ $concat: ["$dialCode", "$phone"] }, phoneNumbers],
+  // Filter out invalid phone numbers
+  const validPhoneNumbers = phoneNumbers.filter(phone => isValidPhoneNumber(phone));
+  
+  if (validPhoneNumbers.length === 0) {
+    return res.status(200).json([]);
+  }
+
+  // Use the phone matching pipeline for robust phone number matching
+  const matchingPipeline = createPhoneMatchingPipeline(validPhoneNumbers);
+  
+  // If no valid phone numbers provided, return empty array
+  if (matchingPipeline.length === 0) {
+    return res.status(200).json([]);
+  }
+
+  // Build aggregation pipeline
+  const aggregationPipeline = [
+    // First match users with activated status
+    {
+      $match: {
+        status: "activated"
+      }
     },
-  })
-    .select("firstName lastName phone dialCode photo username")
-    .lean();
+    // Apply phone matching pipeline
+    ...matchingPipeline,
+    // Select required fields including searchedPhone
+    {
+      $project: {
+        firstName: 1,
+        lastName: 1,
+        phone: 1,
+        dialCode: 1,
+        photo: 1,
+        username: 1,
+        searchedPhone: 1  // Include the searched phone number
+      }
+    }
+  ];
 
-  let ids = existingUsers.map((user) => user._id);
-  await User.updateOne({ _id: user._id }, { contacts: ids });
+  const existingUsers = await User.aggregate(aggregationPipeline);
 
-  return res.status(200).json(existingUsers);
+  
+  // Update user's contacts with found user IDs
+  if (existingUsers.length > 0) {
+    let ids = existingUsers.map((foundUser) => foundUser._id);
+    User.updateOne({ _id: user._id }, { contacts: ids });
+  }
+
+  res.status(200).json(existingUsers);
 });
 
 exports.sendRequest = catchAsync(async (req, res) => {
