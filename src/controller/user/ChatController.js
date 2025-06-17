@@ -22,8 +22,8 @@ exports.findChatSessionByReceipient = catchAsync(async (req, res) => {
     type: "personal",
     receipients: {
       $all: [
-        { $elemMatch: { user: user._id } },
-        { $elemMatch: { user: receipientId } },
+        { $elemMatch: { user: new Types.ObjectId(user._id) } },
+        { $elemMatch: { user: new Types.ObjectId(receipientId) } },
       ],
     },
   })
@@ -39,15 +39,15 @@ exports.findChatSessionByReceipient = catchAsync(async (req, res) => {
     console.log("chatSession not found", {
       type: "personal",
       receipients: [
-        { user: user._id, status: "active" },
-        { user: receipientId, status: "active" },
+        { user: new Types.ObjectId(user._id), status: "active" },
+        { user: new Types.ObjectId(receipientId), status: "active" },
       ],
     });
     let newChatSession = await ChatSession.create({
       type: "personal",
       receipients: [
-        { user: user._id, status: "active" },
-        { user: receipientId, status: "active" },
+        { user: new Types.ObjectId(user._id), status: "active" },
+        { user: new Types.ObjectId(receipientId), status: "active" },
       ],
     });
 
@@ -169,12 +169,14 @@ exports.createChatSession = catchAsync(async (req, res) => {
 
 exports.sessionList = catchAsync(async (req, res) => {
   const { user } = req;
+
+  console.log("user", user);
   const { page, limit, type = "personal" } = req.query;
 
   let aggregate = ChatSession.aggregate([
     {
       $match: {
-        receipients: { $elemMatch: { user: user._id } },
+        receipients: { $elemMatch: { user: new Types.ObjectId(user._id) } },
         // lastMessage: { $ne: null },
 
         ...(type && { type }),
