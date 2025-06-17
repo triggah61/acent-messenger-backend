@@ -1,10 +1,10 @@
 /**
  * @fileoverview Main application entry point
- * 
+ *
  * This module sets up the Express application, configures middleware,
  * establishes routes, and handles errors. It serves as the central
  * configuration point for the Node.js server.
- * 
+ *
  * @module app
  * @requires express
  * @requires cors
@@ -18,7 +18,11 @@ const express = require("express");
 const cors = require("cors");
 require("dotenv").config();
 require("./src/config/db");
-require("./src/cronJob");
+
+if (process.env.RUN_SCHEDULER === "yes") {
+  console.log("Scheduler is enabled!");
+  require("./src/cronJob");
+}
 const body_parser = require("body-parser");
 const useragent = require("express-useragent");
 const winston = require("winston");
