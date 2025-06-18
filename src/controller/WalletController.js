@@ -337,6 +337,7 @@ exports.estimateTransactionFee = async (req, res, next) => {
     // Get UTXOs to estimate input count
     const utxos = await bitcoinWalletService.getUTXOs(wallet.address);
     const inputCount = Math.min(utxos.length, 10); // Limit to 10 inputs for estimation
+    console.log("inputCount", inputCount);
 
     // Calculate fees
     const networkFee = {
@@ -359,8 +360,8 @@ exports.estimateTransactionFee = async (req, res, next) => {
           btc: bitcoinWalletService.satoshisToBTC(networkFee.low),
         },
         platform: {
-          satoshis: platformFeeAmount >= dustThreshold ? platformFeeAmount : 0,
-          btc: platformFeeAmount >= dustThreshold ? bitcoinWalletService.satoshisToBTC(platformFeeAmount) : 0,
+          satoshis: platformFeeAmount, // Always show full platform fee
+          btc: bitcoinWalletService.satoshisToBTC(platformFeeAmount),
         },
       },
       medium: {
@@ -369,8 +370,8 @@ exports.estimateTransactionFee = async (req, res, next) => {
           btc: bitcoinWalletService.satoshisToBTC(networkFee.medium),
         },
         platform: {
-          satoshis: platformFeeAmount >= dustThreshold ? platformFeeAmount : 0,
-          btc: platformFeeAmount >= dustThreshold ? bitcoinWalletService.satoshisToBTC(platformFeeAmount) : 0,
+          satoshis: platformFeeAmount, // Always show full platform fee
+          btc: bitcoinWalletService.satoshisToBTC(platformFeeAmount),
         },
       },
       high: {
@@ -379,8 +380,8 @@ exports.estimateTransactionFee = async (req, res, next) => {
           btc: bitcoinWalletService.satoshisToBTC(networkFee.high),
         },
         platform: {
-          satoshis: platformFeeAmount >= dustThreshold ? platformFeeAmount : 0,
-          btc: platformFeeAmount >= dustThreshold ? bitcoinWalletService.satoshisToBTC(platformFeeAmount) : 0,
+          satoshis: platformFeeAmount, // Always show full platform fee
+          btc: bitcoinWalletService.satoshisToBTC(platformFeeAmount),
         },
       },
     };
@@ -394,8 +395,8 @@ exports.estimateTransactionFee = async (req, res, next) => {
           dustThreshold: dustThreshold,
           platformFeeIsDust: platformFeeAmount < dustThreshold,
           note: platformFeeAmount < dustThreshold ? 
-            "Platform fee is below dust threshold and will be added to network fee" : 
-            "Platform fee will be charged separately"
+            "Platform fee is below dust threshold - will be added to network fee for miners, but you still pay the full platform fee" : 
+            "Platform fee will be sent to admin wallet"
         },
         estimatedConfirmationTime: {
           low: "60-120 minutes",

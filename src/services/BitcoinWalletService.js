@@ -132,6 +132,10 @@ class BitcoinWalletService {
     // Platform fee percentage (0.5% = 0.005)
     this.platformFeePercentage =
       parseFloat(process.env.PLATFORM_FEE_PERCENTAGE) || 0.005;
+
+    // Minimum platform fee in satoshis (to avoid dust)
+    this.minimumPlatformFee =
+      parseInt(process.env.MINIMUM_PLATFORM_FEE) || 1000;
   }
 
   /**
@@ -340,10 +344,13 @@ class BitcoinWalletService {
   }
 
   /**
-   * Calculate platform fee
+   * Calculate platform fee with minimum threshold
    */
   calculatePlatformFee(amount) {
-    return Math.floor(amount * this.platformFeePercentage);
+    const percentageFee = Math.floor(amount * this.platformFeePercentage);
+    
+    // Return the higher of percentage fee or minimum fee
+    return Math.max(percentageFee, this.minimumPlatformFee);
   }
 
   /**
@@ -440,7 +447,6 @@ class BitcoinWalletService {
     // Check for dust amounts and adjust
     const dustThreshold = this.getDustThreshold();
     let adjustedNetworkFee = networkFee;
-    let adjustedPlatformFee = platformFee;
     let shouldCreatePlatformFeeOutput = false;
     
     console.log("=== DUST CHECK ===");
@@ -448,18 +454,19 @@ class BitcoinWalletService {
     console.log("Dust threshold:", dustThreshold);
     console.log("Platform fee is dust:", this.isDustAmount(platformFee));
 
-    // If platform fee is dust, add it to network fee instead of creating separate output
+    // Always charge platform fee, but handle dust outputs appropriately
     if (this.isDustAmount(platformFee)) {
-      console.log("Platform fee is dust, adding to network fee");
+      console.log("Platform fee is dust - adding to network fee for miners, but still charging user");
+      // Add platform fee to network fee (miners get it instead of creating dust output)
       adjustedNetworkFee += platformFee;
-      adjustedPlatformFee = 0;
       shouldCreatePlatformFeeOutput = false;
     } else if (platformFee > 0 && this.adminWalletAddress) {
+      console.log("Platform fee is above dust threshold - creating separate output");
       shouldCreatePlatformFeeOutput = true;
     }
 
-    // Calculate change
-    const change = inputTotal - amount - adjustedNetworkFee - (shouldCreatePlatformFeeOutput ? platformFee : 0);
+    // Calculate change (ALWAYS subtract full platform fee from user's funds)
+    const change = inputTotal - amount - adjustedNetworkFee - platformFee;
     let shouldCreateChangeOutput = false;
     let adjustedChange = change;
 
@@ -479,10 +486,12 @@ class BitcoinWalletService {
     console.log("=== FINAL AMOUNTS ===");
     console.log("Amount to recipient:", amount);
     console.log("Network fee (adjusted):", adjustedNetworkFee);
+    console.log("Platform fee (always charged):", platformFee);
     console.log("Platform fee output:", shouldCreatePlatformFeeOutput ? platformFee : 0);
     console.log("Change output:", shouldCreateChangeOutput ? adjustedChange : 0);
     console.log("Should create platform fee output:", shouldCreatePlatformFeeOutput);
     console.log("Should create change output:", shouldCreateChangeOutput);
+    console.log("Total deducted from user:", amount + adjustedNetworkFee + platformFee);
 
     // Create transaction using Psbt (modern approach)
     const psbt = new bitcoin.Psbt({ network: this.network });
@@ -590,7 +599,7 @@ class BitcoinWalletService {
       toAddress,
       amount,
       fee: adjustedNetworkFee,
-      adminFee: shouldCreatePlatformFeeOutput ? platformFee : 0,
+      adminFee: platformFee,
       netAmount: amount,
       status: "pending",
       network: wallet.network,
@@ -608,6 +617,15 @@ class BitcoinWalletService {
       ],
       description,
       submittedAt: new Date(),
+      metadata: {
+        dustHandling: {
+          platformFeeWasDust: this.isDustAmount(platformFee),
+          platformFeeAddedToMinerFee: this.isDustAmount(platformFee),
+          originalNetworkFee: networkFee,
+          adjustedNetworkFee: adjustedNetworkFee,
+          note: this.isDustAmount(platformFee) ? 'Platform fee was below dust threshold, added to miner fee' : 'Platform fee sent to admin wallet'
+        }
+      }
     });
 
     await transaction.save();
@@ -633,9 +651,15 @@ class BitcoinWalletService {
       txHash: transaction.txHash,
       amount,
       fee: adjustedNetworkFee,
-      platformFee: shouldCreatePlatformFeeOutput ? platformFee : 0,
+      platformFee: platformFee,
       status: transaction.status,
       success: broadcastResult.success,
+      dustHandling: {
+        platformFeeWasDust: this.isDustAmount(platformFee),
+        note: this.isDustAmount(platformFee) ? 
+          'Platform fee was below dust threshold, added to miner fee' : 
+          'Platform fee sent to admin wallet'
+      }
     };
   }
 
