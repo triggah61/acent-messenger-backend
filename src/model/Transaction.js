@@ -161,6 +161,13 @@ const transactionSchema = new Schema(
       trim: true,
       default: null,
     }],
+
+    // Metadata for additional information (especially for auto-detected transactions)
+    metadata: {
+      type: Schema.Types.Mixed,
+      default: null,
+    },
+
     // Processing timestamps
     submittedAt: {
       type: Date,
@@ -296,6 +303,28 @@ transactionSchema.statics.calculateUserBalance = async function(userId) {
     totalSent,
     totalFees
   };
+};
+
+// Find transaction by hash
+transactionSchema.statics.findByTxHash = function(txHash) {
+  return this.findOne({ txHash });
+};
+
+// Get latest transaction for an address (for pagination in listener)
+transactionSchema.statics.getLatestTransactionForAddress = function(address) {
+  return this.findOne({
+    $or: [
+      { fromAddress: address },
+      { toAddress: address }
+    ]
+  }).sort({ submittedAt: -1 });
+};
+
+// Find auto-detected transactions
+transactionSchema.statics.findAutoDetectedTransactions = function(limit = 100) {
+  return this.find({
+    'metadata.detectedBy': 'transaction-listener'
+  }).sort({ createdAt: -1 }).limit(limit);
 };
 
 module.exports = mongoose.model("Transaction", transactionSchema); 

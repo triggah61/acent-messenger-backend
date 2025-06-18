@@ -194,4 +194,14 @@ router.get('/test-connection',
   walletController.testConnection
 );
 
+/**
+ * @route   POST /api/wallet/trigger-listener
+ * @desc    Manually trigger transaction listener scan
+ * @access  Private
+ */
+router.post('/trigger-listener',
+  authMiddleware,
+  walletController.triggerTransactionListener
+);
+
 module.exports = router;

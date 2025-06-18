@@ -258,8 +258,6 @@ class BitcoinWalletService {
         timeout: 10000
       });
 
-      console.log("Balance API response:", response.data);
-
       return {
         balance: response.data.chain_stats.funded_txo_sum - response.data.chain_stats.spent_txo_sum,
         unconfirmedBalance: response.data.mempool_stats.funded_txo_sum - response.data.mempool_stats.spent_txo_sum,

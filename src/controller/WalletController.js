@@ -570,6 +570,31 @@ exports.testConnection = async (req, res, next) => {
   }
 };
 
+/**
+ * Manually trigger transaction listener scan
+ */
+exports.triggerTransactionListener = async (req, res, next) => {
+  try {
+    // Import the transaction listener service
+    const { TransactionListenerService } = require('../cronJob/transactionListener');
+    const listener = new TransactionListenerService();
+    
+    // Run the scan manually
+    await listener.scanForNewTransactions();
+    
+    res.status(200).json({
+      success: true,
+      message: 'Transaction listener scan completed manually',
+      data: {
+        timestamp: new Date(),
+        note: 'Check server logs for detailed results'
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 // module.exports = {
 //   createWallet,
 //   sendTransaction,
