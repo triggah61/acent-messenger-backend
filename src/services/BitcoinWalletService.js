@@ -170,8 +170,8 @@ class BitcoinWalletService {
 
       const child = root.derivePath(derivationPath);
 
-      // Generate address
-      const { address } = bitcoin.payments.p2pkh({
+      // Generate SegWit address (P2WPKH) - starts with 'bc1' for mainnet, 'tb1' for testnet
+      const { address } = bitcoin.payments.p2wpkh({
         pubkey: child.publicKey,
         network: this.network,
       });

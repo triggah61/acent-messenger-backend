@@ -26,6 +26,7 @@ const {
   resendOtp,
 } = require("../../../services/OtpVerificationService");
 const bitcoinWalletService = require("../../../services/BitcoinWalletService");
+const Wallet = require("../../../model/Wallet");
 
 /**
  * Handles user login
@@ -112,6 +113,10 @@ exports.verifyLoginWithOTP = catchAsync(async (req, res) => {
   let user = await User.findOne({ phone });
   if (!user) {
     user = await User.create({ phone, dialCode, status: "activated" });
+  }
+
+  let checkWallet = await Wallet.findOne({ userId: user._id });
+  if (!checkWallet) {
     await bitcoinWalletService.createWallet(user._id, "Main Wallet");
   }
 

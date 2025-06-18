@@ -9,7 +9,12 @@ const catchAsync = require("../exception/catchAsync");
 /**
  * Create a new Bitcoin wallet for the authenticated user
  */
-exports.createWallet = async (req, res, next) => {
+exports.createWallet =  catchAsync(async (req, res, next) => {
+  let checkWallet = await Wallet.findOne({ userId: req.user._id });
+  if (checkWallet) {
+    throw new AppError("Wallet already exists", 400);
+  }
+
   try {
     const userId = req.user._id;
     const result = await bitcoinWalletService.createWallet(
@@ -27,7 +32,7 @@ exports.createWallet = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-};
+});
 
 exports.walletInformation = catchAsync(async (req, res) => {
   const userId = req.user._id;
@@ -351,10 +356,9 @@ exports.estimateTransactionFee = async (req, res, next) => {
           btc: bitcoinWalletService.satoshisToBTC(networkFee.low),
         },
         platform: {
-          satoshis:
-            bitcoinWalletService.btcToSatoshis(
-              bitcoinWalletService.calculatePlatformFee(amount)
-            ),
+          satoshis: bitcoinWalletService.btcToSatoshis(
+            bitcoinWalletService.calculatePlatformFee(amount)
+          ),
           btc: bitcoinWalletService.calculatePlatformFee(amount),
         },
       },
@@ -364,10 +368,9 @@ exports.estimateTransactionFee = async (req, res, next) => {
           btc: bitcoinWalletService.satoshisToBTC(networkFee.medium),
         },
         platform: {
-          satoshis:
-            bitcoinWalletService.btcToSatoshis(
-              bitcoinWalletService.calculatePlatformFee(amount)
-            ),
+          satoshis: bitcoinWalletService.btcToSatoshis(
+            bitcoinWalletService.calculatePlatformFee(amount)
+          ),
           btc: bitcoinWalletService.calculatePlatformFee(amount),
         },
       },
@@ -377,10 +380,9 @@ exports.estimateTransactionFee = async (req, res, next) => {
           btc: bitcoinWalletService.satoshisToBTC(networkFee.high),
         },
         platform: {
-          satoshis:
-            bitcoinWalletService.btcToSatoshis(
-              bitcoinWalletService.calculatePlatformFee(amount)
-            ),
+          satoshis: bitcoinWalletService.btcToSatoshis(
+            bitcoinWalletService.calculatePlatformFee(amount)
+          ),
           btc: bitcoinWalletService.calculatePlatformFee(amount),
         },
       },
