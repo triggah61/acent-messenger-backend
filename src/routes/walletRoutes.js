@@ -184,4 +184,14 @@ router.get('/:walletId/statistics',
   walletController.getWalletStatistics
 );
 
+/**
+ * @route   GET /api/wallet/test-connection
+ * @desc    Test QuickNode connection and configuration
+ * @access  Private
+ */
+router.get('/test-connection',
+  authMiddleware,
+  walletController.testConnection
+);
+
 module.exports = router;

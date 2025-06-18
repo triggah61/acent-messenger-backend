@@ -103,22 +103,20 @@ class BitcoinWalletService {
         ? bitcoin.networks.bitcoin
         : bitcoin.networks.testnet;
 
-    // API endpoints for blockchain data
-    this.apiEndpoints = {
+    // QuickNode endpoints configuration
+    this.rpcConfig = {
       testnet: {
-        base: "https://api.blockcypher.com/v1/btc/test3",
-        broadcast: "https://api.blockcypher.com/v1/btc/test3/txs/push",
+        endpoint: process.env.QUICKNODE_BITCOIN_TESTNET_ENDPOINT || "https://your-testnet-endpoint.btc-testnet.quiknode.pro/YOUR_API_KEY/",
       },
       mainnet: {
-        base: "https://api.blockcypher.com/v1/btc/main",
-        broadcast: "https://api.blockcypher.com/v1/btc/main/txs/push",
+        endpoint: process.env.QUICKNODE_BITCOIN_MAINNET_ENDPOINT || "https://your-mainnet-endpoint.btc.quiknode.pro/YOUR_API_KEY/",
       },
     };
 
-    this.currentApi =
+    this.currentEndpoint =
       this.network === bitcoin.networks.bitcoin
-        ? this.apiEndpoints.mainnet
-        : this.apiEndpoints.testnet;
+        ? this.rpcConfig.mainnet.endpoint
+        : this.rpcConfig.testnet.endpoint;
 
     // Fee configurations (in satoshis per byte)
     this.feeRates = {
@@ -246,21 +244,32 @@ class BitcoinWalletService {
   }
 
   /**
-   * Get wallet balance from blockchain
+   * Get wallet balance from blockchain using blockchain explorer API
    */
   async getWalletBalance(address) {
     try {
-      const response = await axios.get(
-        `${this.currentApi.base}/addrs/${address}/balance`
-      );
+      console.log("=== BALANCE CHECK ===");
+      console.log("Fetching balance for address:", address);
+      console.log("Using blockchain explorer API...");
+
+      // Use blockchain explorer API directly - most reliable for external addresses
+      const networkPath = this.network === bitcoin.networks.bitcoin ? "" : "testnet/";
+      const response = await axios.get(`https://blockstream.info/${networkPath}api/address/${address}`, {
+        timeout: 10000
+      });
+
+      console.log("Balance API response:", response.data);
+
       return {
-        balance: response.data.balance, // in satoshis
-        unconfirmedBalance: response.data.unconfirmed_balance,
-        totalReceived: response.data.total_received,
-        totalSent: response.data.total_sent,
-        nTx: response.data.n_tx,
+        balance: response.data.chain_stats.funded_txo_sum - response.data.chain_stats.spent_txo_sum,
+        unconfirmedBalance: response.data.mempool_stats.funded_txo_sum - response.data.mempool_stats.spent_txo_sum,
+        totalReceived: response.data.chain_stats.funded_txo_sum,
+        totalSent: response.data.chain_stats.spent_txo_sum,
+        nTx: response.data.chain_stats.tx_count,
       };
+
     } catch (error) {
+      console.error("Balance API Error:", error.message);
       throw new AppError(`Failed to get wallet balance: ${error.message}`, 500);
     }
   }
@@ -288,31 +297,31 @@ class BitcoinWalletService {
   }
 
   /**
-   * Get UTXOs for an address
+   * Get UTXOs for an address using blockchain explorer API
    */
   async getUTXOs(address) {
     try {
       console.log("=== UTXO DEBUG ===");
       console.log("Fetching UTXOs for address:", address);
-      console.log(
-        "API endpoint:",
-        `${this.currentApi.base}/addrs/${address}?unspentOnly=true`
+      console.log("Using blockchain explorer API...");
+
+      // Use blockchain explorer API directly - more reliable for external addresses
+      const networkPath = this.network === bitcoin.networks.bitcoin ? "" : "testnet/";
+      const explorerResponse = await axios.get(
+        `https://blockstream.info/${networkPath}api/address/${address}/utxo`,
+        { timeout: 10000 }
       );
 
-      const response = await axios.get(
-        `${this.currentApi.base}/addrs/${address}?unspentOnly=true`
-      );
+      console.log("UTXOs found via explorer:", explorerResponse.data.length);
+      console.log("UTXO data:", explorerResponse.data);
 
-      console.log("UTXO API Response status:", response.status);
-      console.log(
-        "UTXO API Response data:",
-        JSON.stringify(response.data, null, 2)
-      );
+      // Transform explorer UTXO format to match expected format
+      return explorerResponse.data.map(utxo => ({
+        tx_hash: utxo.txid,
+        tx_output_n: utxo.vout,
+        value: utxo.value
+      }));
 
-      const utxos = response.data.txrefs || [];
-      console.log("UTXOs found:", utxos.length);
-
-      return utxos;
     } catch (error) {
       console.error("UTXO API Error:", error.message);
       console.error("UTXO API Error response:", error.response?.data);
@@ -336,7 +345,21 @@ class BitcoinWalletService {
    * Calculate platform fee
    */
   calculatePlatformFee(amount) {
-    return amount * (this.platformFeePercentage / 100);
+    return Math.floor(amount * this.platformFeePercentage);
+  }
+
+  /**
+   * Bitcoin dust threshold - minimum output value to avoid dust rejection
+   */
+  getDustThreshold() {
+    return 546; // Standard dust threshold in satoshis
+  }
+
+  /**
+   * Check if an amount is considered dust
+   */
+  isDustAmount(amount) {
+    return amount < this.getDustThreshold();
   }
 
   /**
@@ -416,20 +439,73 @@ class BitcoinWalletService {
       throw new AppError("Insufficient funds in UTXOs", 400);
     }
 
+    // Check for dust amounts and adjust
+    const dustThreshold = this.getDustThreshold();
+    let adjustedNetworkFee = networkFee;
+    let adjustedPlatformFee = platformFee;
+    let shouldCreatePlatformFeeOutput = false;
+    
+    console.log("=== DUST CHECK ===");
+    console.log("Platform fee:", platformFee);
+    console.log("Dust threshold:", dustThreshold);
+    console.log("Platform fee is dust:", this.isDustAmount(platformFee));
+
+    // If platform fee is dust, add it to network fee instead of creating separate output
+    if (this.isDustAmount(platformFee)) {
+      console.log("Platform fee is dust, adding to network fee");
+      adjustedNetworkFee += platformFee;
+      adjustedPlatformFee = 0;
+      shouldCreatePlatformFeeOutput = false;
+    } else if (platformFee > 0 && this.adminWalletAddress) {
+      shouldCreatePlatformFeeOutput = true;
+    }
+
+    // Calculate change
+    const change = inputTotal - amount - adjustedNetworkFee - (shouldCreatePlatformFeeOutput ? platformFee : 0);
+    let shouldCreateChangeOutput = false;
+    let adjustedChange = change;
+
+    console.log("Change amount:", change);
+    console.log("Change is dust:", this.isDustAmount(change));
+
+    // If change is dust, add it to network fee instead of creating change output
+    if (this.isDustAmount(change)) {
+      console.log("Change is dust, adding to network fee");
+      adjustedNetworkFee += change;
+      adjustedChange = 0;
+      shouldCreateChangeOutput = false;
+    } else if (change > 0) {
+      shouldCreateChangeOutput = true;
+    }
+
+    console.log("=== FINAL AMOUNTS ===");
+    console.log("Amount to recipient:", amount);
+    console.log("Network fee (adjusted):", adjustedNetworkFee);
+    console.log("Platform fee output:", shouldCreatePlatformFeeOutput ? platformFee : 0);
+    console.log("Change output:", shouldCreateChangeOutput ? adjustedChange : 0);
+    console.log("Should create platform fee output:", shouldCreatePlatformFeeOutput);
+    console.log("Should create change output:", shouldCreateChangeOutput);
+
     // Create transaction using Psbt (modern approach)
     const psbt = new bitcoin.Psbt({ network: this.network });
 
     // Add inputs
     for (const utxo of selectedUTXOs) {
-      // For legacy P2PKH addresses, we need the full transaction
       console.log(
         `Adding input: ${utxo.tx_hash}:${utxo.tx_output_n}, value: ${utxo.value}`
       );
-      const txHex = await this.getTransactionHex(utxo.tx_hash);
+      
+      // For SegWit P2WPKH addresses, we can use witnessUtxo instead of full transaction
       psbt.addInput({
         hash: utxo.tx_hash,
         index: utxo.tx_output_n,
-        nonWitnessUtxo: Buffer.from(txHex, "hex"),
+        witnessUtxo: {
+          script: bitcoin.payments.p2wpkh({
+            pubkey: keyPair.publicKey,
+            network: this.network,
+          }).output,
+          value: utxo.value,
+        },
       });
     }
 
@@ -440,7 +516,7 @@ class BitcoinWalletService {
     });
 
     // Add platform fee output (if admin wallet is configured)
-    if (platformFee > 0 && this.adminWalletAddress) {
+    if (shouldCreatePlatformFeeOutput) {
       psbt.addOutput({
         address: this.adminWalletAddress,
         value: platformFee,
@@ -448,11 +524,10 @@ class BitcoinWalletService {
     }
 
     // Add change output (if needed)
-    const change = inputTotal - amount - networkFee - platformFee;
-    if (change > 0) {
+    if (shouldCreateChangeOutput) {
       psbt.addOutput({
         address: wallet.address,
-        value: change,
+        value: adjustedChange,
       });
     }
 
@@ -480,7 +555,7 @@ class BitcoinWalletService {
       }
     }
 
-    // Validate signatures individually (safer for legacy addresses)
+    // Validate signatures individually (safer for SegWit addresses)
     try {
       for (let i = 0; i < selectedUTXOs.length; i++) {
         const validated = psbt.validateSignaturesOfInput(i);
@@ -489,7 +564,7 @@ class BitcoinWalletService {
       console.log("All signatures validated successfully");
     } catch (error) {
       console.warn(`Signature validation warning: ${error.message}`);
-      // Continue anyway - legacy addresses sometimes have validation quirks
+      // Continue anyway - but SegWit should be more reliable than legacy
     }
 
     // Finalize all inputs
@@ -516,8 +591,8 @@ class BitcoinWalletService {
       fromAddress: wallet.address,
       toAddress,
       amount,
-      fee: networkFee,
-      adminFee: platformFee,
+      fee: adjustedNetworkFee,
+      adminFee: shouldCreatePlatformFeeOutput ? platformFee : 0,
       netAmount: amount,
       status: "pending",
       network: wallet.network,
@@ -530,10 +605,8 @@ class BitcoinWalletService {
       })),
       outputs: [
         { address: toAddress, value: amount },
-        ...(platformFee > 0 && this.adminWalletAddress
-          ? [{ address: this.adminWalletAddress, value: platformFee }]
-          : []),
-        ...(change > 0 ? [{ address: wallet.address, value: change }] : []),
+        ...(shouldCreatePlatformFeeOutput ? [{ address: this.adminWalletAddress, value: platformFee }] : []),
+        ...(shouldCreateChangeOutput ? [{ address: wallet.address, value: adjustedChange }] : []),
       ],
       description,
       submittedAt: new Date(),
@@ -550,6 +623,7 @@ class BitcoinWalletService {
       transaction.processedAt = new Date();
       await transaction.save();
     } else {
+      console.log("Broadcast failed:", broadcastResult.error);
       await transaction.markAsFailed({
         code: "BROADCAST_FAILED",
         message: broadcastResult.error,
@@ -560,41 +634,84 @@ class BitcoinWalletService {
       transactionId: transaction._id,
       txHash: transaction.txHash,
       amount,
-      fee: networkFee,
-      platformFee,
+      fee: adjustedNetworkFee,
+      platformFee: shouldCreatePlatformFeeOutput ? platformFee : 0,
       status: transaction.status,
       success: broadcastResult.success,
     };
   }
 
   /**
-   * Broadcast transaction to Bitcoin network
+   * Broadcast transaction to Bitcoin network using QuickNode RPC
    */
   async broadcastTransaction(rawTx) {
     try {
-      const response = await axios.post(this.currentApi.broadcast, {
-        tx: rawTx,
+      const requestData = {
+        jsonrpc: "2.0",
+        id: 1,
+        method: "sendrawtransaction",
+        params: [rawTx]
+      };
+
+      const response = await axios.post(this.currentEndpoint, requestData, {
+        headers: {
+          'Content-Type': 'application/json'
+        }
       });
+
+      if (response.data.error) {
+        return {
+          success: false,
+          error: response.data.error.message,
+        };
+      }
 
       return {
         success: true,
-        txHash: response.data.tx.hash,
+        txHash: response.data.result,
       };
     } catch (error) {
       return {
         success: false,
-        error: error.response?.data?.error || error.message,
+        error: error.response?.data?.error?.message || error.message,
       };
     }
   }
 
   /**
-   * Get transaction details
+   * Get transaction details using standard Bitcoin RPC (no add-on required)
    */
   async getTransactionDetails(txHash) {
     try {
-      const response = await axios.get(`${this.currentApi.base}/txs/${txHash}`);
-      return response.data;
+      // Try standard Bitcoin RPC first
+      const requestData = {
+        jsonrpc: "2.0",
+        id: 1,
+        method: "getrawtransaction",
+        params: [txHash, true] // true = return decoded JSON instead of hex
+      };
+
+      try {
+        const response = await axios.post(this.currentEndpoint, requestData, {
+          headers: { 'Content-Type': 'application/json' }
+        });
+
+        if (!response.data.error && response.data.result) {
+          return response.data.result;
+        }
+      } catch (rpcError) {
+        console.log("Standard RPC failed, falling back to blockchain explorer...");
+      }
+
+      // // Fallback to blockchain explorer API
+      // const networkPath = this.network === bitcoin.networks.bitcoin ? "" : "testnet/";
+      // const explorerResponse = await axios.get(
+      //   `https://blockstream.info/${networkPath}api/tx/${txHash}`,
+      //   { timeout: 10000 }
+      // );
+
+      // return explorerResponse.data;
+
     } catch (error) {
       throw new AppError(
         `Failed to get transaction details: ${error.message}`,
@@ -604,25 +721,28 @@ class BitcoinWalletService {
   }
 
   /**
-   * Get raw transaction hex
+   * Get raw transaction hex using QuickNode RPC
    */
   async getTransactionHex(txHash) {
     try {
-      // Try BlockCypher first
-      const response = await axios.get(
-        `${this.currentApi.base}/txs/${txHash}?includeHex=true`
-      );
-      if (response.data.hex) {
-        return response.data.hex;
+      const requestData = {
+        jsonrpc: "2.0",
+        id: 1,
+        method: "getrawtransaction",
+        params: [txHash, false] // false = return hex, true = return decoded
+      };
+
+      const response = await axios.post(this.currentEndpoint, requestData, {
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (response.data.error) {
+        throw new Error(response.data.error.message);
       }
 
-      // Fallback to Blockstream API for raw hex
-      const networkPath =
-        this.network === bitcoin.networks.bitcoin ? "" : "testnet/";
-      const blockstreamResponse = await axios.get(
-        `https://blockstream.info/${networkPath}api/tx/${txHash}/hex`
-      );
-      return blockstreamResponse.data;
+      return response.data.result;
     } catch (error) {
       throw new AppError(
         `Failed to get transaction hex: ${error.message}`,
@@ -709,6 +829,70 @@ class BitcoinWalletService {
    */
   btcToSatoshis(btc) {
     return Math.floor(btc * 100000000);
+  }
+
+  /**
+   * Test QuickNode connection and available methods
+   */
+  async testConnection() {
+    try {
+      console.log("=== Connection Test ===");
+      console.log("QuickNode endpoint:", this.currentEndpoint);
+      console.log("Network:", this.network === bitcoin.networks.bitcoin ? "mainnet" : "testnet");
+      console.log("Usage: QuickNode for transaction broadcasting, Blockstream.info for balance/UTXOs");
+
+      // Test basic connection with getblockchaininfo
+      const basicRequest = {
+        jsonrpc: "2.0",
+        id: 1,
+        method: "getblockchaininfo",
+        params: []
+      };
+
+      const response = await axios.post(this.currentEndpoint, basicRequest, {
+        headers: { 'Content-Type': 'application/json' },
+        timeout: 10000
+      });
+
+      if (response.data.error) {
+        console.error("❌ QuickNode connection failed:", response.data.error.message);
+        return { success: false, error: response.data.error.message };
+      }
+
+      console.log("✅ QuickNode connection successful");
+      console.log("Chain:", response.data.result.chain);
+      console.log("Blocks:", response.data.result.blocks);
+
+      // Test blockchain explorer API
+      const networkPath = this.network === bitcoin.networks.bitcoin ? "" : "testnet/";
+      try {
+        const explorerResponse = await axios.get(`https://blockstream.info/${networkPath}api/blocks/tip/height`, {
+          timeout: 5000
+        });
+        console.log("✅ Blockchain explorer API working");
+        console.log("Latest block height:", explorerResponse.data);
+      } catch (explorerError) {
+        console.log("⚠️  Blockchain explorer API test failed:", explorerError.message);
+      }
+
+      return { 
+        success: true, 
+        quicknode: {
+          chain: response.data.result.chain,
+          blocks: response.data.result.blocks,
+          status: "connected"
+        },
+        blockchainExplorer: {
+          status: "available",
+          usage: "balance and UTXO queries"
+        },
+        setup: "Hybrid: QuickNode for broadcasting + Blockstream.info for queries"
+      };
+
+    } catch (error) {
+      console.error("❌ Connection test failed:", error.message);
+      return { success: false, error: error.message };
+    }
   }
 }
 

@@ -230,13 +230,18 @@ All API responses follow this format:
 
 | Variable | Description | Default | Required |
 |----------|-------------|---------|----------|
-| `MONGODB_URI` | MongoDB connection string | `mongodb://localhost:27017/acent-messenger` | Yes |
-| `JWT_SECRET` | JWT signing secret | - | Yes |
+| `PORT` | Server port | `3000` | No |
+| `NODE_ENV` | Environment mode | `development` | No |
+| `JWT_SECRET` | JWT signing secret | | Yes |
+| `JWT_EXPIRE` | JWT expiration time | `7d` | No |
+| `MONGODB_URI` | MongoDB connection string | | Yes |
 | `BITCOIN_NETWORK` | Bitcoin network (mainnet/testnet) | `testnet` | Yes |
-| `PLATFORM_FEE_PERCENTAGE` | Platform fee percentage | `0.005` | No |
-| `ADMIN_WALLET_ADDRESS` | Admin wallet for fee collection | - | Yes |
-| `DAILY_TRANSACTION_LIMIT` | Daily transaction limit (satoshis) | `100000000` | No |
-| `HIGH_VALUE_2FA_THRESHOLD` | 2FA threshold (satoshis) | `20000000` | No |
+| `QUICKNODE_BITCOIN_MAINNET_ENDPOINT` | QuickNode Bitcoin mainnet endpoint | | Yes |
+| `QUICKNODE_BITCOIN_TESTNET_ENDPOINT` | QuickNode Bitcoin testnet endpoint | | Yes |
+| `WALLET_ENCRYPTION_KEY` | Wallet encryption key | | Yes |
+| `ADMIN_WALLET_ADDRESS` | Admin wallet for fee collection | | No |
+| `PLATFORM_FEE_PERCENTAGE` | Platform fee (%) | `0.5` | No |
+| `CUSTOM_FEE_RATE` | Custom fee rate (sat/byte) | `5` | No |
 
 ### Fee Configuration
 - **Low Priority**: 1 satoshi/byte (~60-120 minutes)
@@ -335,6 +340,29 @@ For support and questions:
 - [BIP39 Specification](https://github.com/bitcoin/bips/blob/master/bip-0039.mediawiki)
 - [BIP44 Specification](https://github.com/bitcoin/bips/blob/master/bip-0044.mediawiki)
 - [BitcoinJS Library Documentation](https://github.com/bitcoinjs/bitcoinjs-lib)
+
+### QuickNode Configuration
+
+1. **Create QuickNode Account**: Sign up at [QuickNode](https://www.quicknode.com)
+2. **Create Bitcoin Endpoints**: 
+   - Create a Bitcoin **Mainnet** endpoint
+   - Create a Bitcoin **Testnet** endpoint
+   - **No add-ons required** - basic Bitcoin RPC is sufficient for transaction broadcasting
+3. **Copy Endpoint URLs**: Save your endpoint URLs to environment variables:
+   ```bash
+   QUICKNODE_BITCOIN_MAINNET_ENDPOINT=https://your-mainnet-endpoint.btc.quiknode.pro/YOUR_API_KEY/
+   QUICKNODE_BITCOIN_TESTNET_ENDPOINT=https://your-testnet-endpoint.btc-testnet.quiknode.pro/YOUR_API_KEY/
+   ```
+
+### Hybrid Architecture
+
+This wallet service uses a **hybrid approach** for optimal cost and reliability:
+
+- **QuickNode**: Used only for **transaction broadcasting** (`sendrawtransaction`)
+- **Blockstream.info API**: Used for **balance queries** and **UTXO fetching** (free and reliable)
+- **No expensive add-ons required**: Saves costs while maintaining full functionality
+
+> **Cost Savings**: By using free blockchain explorer APIs for queries and QuickNode only for broadcasting, you avoid the expensive BTC Blockbook JSON-RPC add-on (typically $20-50/month extra).
 
 ---
 

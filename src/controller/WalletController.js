@@ -349,6 +349,9 @@ exports.estimateTransactionFee = async (req, res, next) => {
       high: bitcoinWalletService.calculateTransactionFee(inputCount, 2, "high"),
     };
 
+    const platformFeeAmount = bitcoinWalletService.calculatePlatformFee(amount);
+    const dustThreshold = 546; // Bitcoin dust threshold
+
     let fees = {
       low: {
         network: {
@@ -356,10 +359,8 @@ exports.estimateTransactionFee = async (req, res, next) => {
           btc: bitcoinWalletService.satoshisToBTC(networkFee.low),
         },
         platform: {
-          satoshis: bitcoinWalletService.btcToSatoshis(
-            bitcoinWalletService.calculatePlatformFee(amount)
-          ),
-          btc: bitcoinWalletService.calculatePlatformFee(amount),
+          satoshis: platformFeeAmount >= dustThreshold ? platformFeeAmount : 0,
+          btc: platformFeeAmount >= dustThreshold ? bitcoinWalletService.satoshisToBTC(platformFeeAmount) : 0,
         },
       },
       medium: {
@@ -368,10 +369,8 @@ exports.estimateTransactionFee = async (req, res, next) => {
           btc: bitcoinWalletService.satoshisToBTC(networkFee.medium),
         },
         platform: {
-          satoshis: bitcoinWalletService.btcToSatoshis(
-            bitcoinWalletService.calculatePlatformFee(amount)
-          ),
-          btc: bitcoinWalletService.calculatePlatformFee(amount),
+          satoshis: platformFeeAmount >= dustThreshold ? platformFeeAmount : 0,
+          btc: platformFeeAmount >= dustThreshold ? bitcoinWalletService.satoshisToBTC(platformFeeAmount) : 0,
         },
       },
       high: {
@@ -380,10 +379,8 @@ exports.estimateTransactionFee = async (req, res, next) => {
           btc: bitcoinWalletService.satoshisToBTC(networkFee.high),
         },
         platform: {
-          satoshis: bitcoinWalletService.btcToSatoshis(
-            bitcoinWalletService.calculatePlatformFee(amount)
-          ),
-          btc: bitcoinWalletService.calculatePlatformFee(amount),
+          satoshis: platformFeeAmount >= dustThreshold ? platformFeeAmount : 0,
+          btc: platformFeeAmount >= dustThreshold ? bitcoinWalletService.satoshisToBTC(platformFeeAmount) : 0,
         },
       },
     };
@@ -393,7 +390,13 @@ exports.estimateTransactionFee = async (req, res, next) => {
       message: "Transaction fees estimated successfully",
       data: {
         fees,
-
+        dustHandling: {
+          dustThreshold: dustThreshold,
+          platformFeeIsDust: platformFeeAmount < dustThreshold,
+          note: platformFeeAmount < dustThreshold ? 
+            "Platform fee is below dust threshold and will be added to network fee" : 
+            "Platform fee will be charged separately"
+        },
         estimatedConfirmationTime: {
           low: "60-120 minutes",
           medium: "10-30 minutes",
@@ -544,6 +547,23 @@ exports.getWalletStatistics = async (req, res, next) => {
           },
         },
       },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Test QuickNode connection
+ */
+exports.testConnection = async (req, res, next) => {
+  try {
+    const result = await bitcoinWalletService.testConnection();
+    
+    res.status(200).json({
+      success: true,
+      message: 'Connection test completed',
+      data: result
     });
   } catch (error) {
     next(error);
