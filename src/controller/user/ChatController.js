@@ -7,7 +7,6 @@ const ChatSession = require("../../model/ChatSession");
 const Message = require("../../model/Message");
 const User = require("../../model/User");
 const SimpleValidator = require("../../validator/simpleValidator");
-const { pushNotification } = require("../../config/pusher");
 const { getFormattedReactions } = require("../../services/ChatService");
 exports.findChatSessionByReceipient = catchAsync(async (req, res) => {
   const { user } = req;

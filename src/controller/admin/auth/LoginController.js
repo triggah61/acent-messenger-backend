@@ -61,24 +61,6 @@ exports.login = catchAsync(async (req, res) => {
   if (user && user.status == "blocked") {
     throw new AppError("User is blocked", 400);
   }
-  // if (!user) {
-  //   return res.status(422).json({ message: "Invalid phone number entered" });
-  // }
-
-  // const isPasswordCorrect = await user.correctPassword(password, user.password);
-  // if (!isPasswordCorrect) {
-  //   return res.status(422).json({ message: "Invalid phone or password" });
-  // }
-
-  // if (true) {
-  //   // Generate the final JWT token
-  //   const webToken = await generateWebToken(user);
-
-  //   return res.status(200).json({
-  //     message: "Login successful",
-  //     data: { token: webToken },
-  //   });
-  // }
 
   let otp = await createOtp(user?._id ?? null, "USER_LOGIN", "phone", phone, {
     // userId: user._id,

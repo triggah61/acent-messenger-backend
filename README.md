@@ -1,369 +1,453 @@
-# Bitcoin Wallet System - Acent Messenger Backend
+# Acent Messenger Backend - Community Edition
 
-A secure, production-ready Bitcoin wallet system built with Express.js, featuring hierarchical deterministic (HD) wallets, encrypted private key storage, and comprehensive transaction management.
+A comprehensive Node.js backend application for a modern messaging platform with integrated Bitcoin wallet functionality, real-time communication, and social features.
 
-## 🚀 Features
+## 🚀 Project Overview
 
-### Core Wallet Features
-- **HD Wallet Support**: BIP44-compliant hierarchical deterministic wallets
-- **Multi-Network**: Support for both Bitcoin mainnet and testnet
-- **Secure Storage**: Private keys encrypted with AES-256-GCM
-- **Mnemonic Support**: BIP39 mnemonic phrase generation and import
-- **Real-time Balance**: Live balance updates from blockchain
+Acent Messenger Backend is a robust, scalable messaging platform built with Node.js and Express.js. It provides a complete backend solution for real-time messaging, Bitcoin wallet integration, user management, and social networking features.
 
-### Transaction Management
-- **Send/Receive**: Full Bitcoin transaction support
-- **Fee Management**: Dynamic fee calculation with priority levels
-- **Platform Fees**: Configurable platform fee collection
-- **Transaction History**: Complete audit trail with pagination
-- **Status Monitoring**: Real-time transaction confirmation tracking
+### 🎯 Key Features
 
-### Security & Compliance
-- **Rate Limiting**: Advanced rate limiting for all operations
-- **Audit Logging**: Comprehensive logging of all sensitive operations
-- **Suspicious Activity Detection**: AI-powered fraud detection
-- **2FA Support**: Two-factor authentication for high-value transactions
-- **Input Validation**: Strict validation and sanitization
-- **Access Control**: User-based wallet isolation
+#### 🔐 Authentication & User Management
+- JWT-based authentication
+- OTP verification via SMS (Twilio integration)
+- Email verification system
+- User profile management with photo uploads
+- Contact management system
+- User status tracking (pending, activated, blocked, deleted)
 
-### Developer Features
-- **REST API**: Clean RESTful API design
-- **Real-time Updates**: WebSocket support for live updates
-- **Comprehensive Validation**: Input validation with express-validator
-- **Error Handling**: Centralized error handling with detailed logging
-- **Documentation**: Full API documentation
+#### 💬 Real-time Messaging
+- Socket.io for real-time communication
+- One-on-one and group chat sessions
+- Message reactions (like, love, laugh, sad, angry, wow, cry)
+- File attachments (images, videos, audio, documents, stickers, GIFs)
+- Message status tracking (sent, delivered, seen, deleted)
+- Reply to messages functionality
+- Message deletion for specific users
 
-## 🛠 Tech Stack
+#### 🪙 Bitcoin Wallet Integration
+- Bitcoin wallet creation and management
+- Transaction sending and receiving
+- Transaction history tracking
+- Bitcoin price fetching
+- Address validation
+- Transaction fee estimation
+- UTXO management
+- Wallet statistics
 
-- **Backend**: Node.js, Express.js
-- **Database**: MongoDB with Mongoose ODM
-- **Blockchain**: bitcoinjs-lib, bip32, bip39
-- **Security**: bcryptjs, crypto (Node.js built-in)
-- **Validation**: express-validator
-- **Rate Limiting**: express-rate-limit
-- **Logging**: winston
-- **Monitoring**: node-cron for transaction monitoring
+#### 📱 Social Features
+- User posts with images/videos
+- Story functionality
+- Contact requests and management
+- User blocking/unblocking
+- Notification system
 
-## 📋 Prerequisites
+#### 🛠 Technical Features
+- MongoDB database with Mongoose ODM
+- Redis caching for improved performance
+- AWS S3 integration for file storage
+- Cron jobs for background tasks
+- Winston logging system
+- Rate limiting
+- Email notifications (Nodemailer)
+- Input validation and sanitization
 
-- Node.js >= 16.0.0
-- MongoDB >= 4.4
-- npm or yarn package manager
+## 🏗 Architecture
 
-## 🔧 Installation
-
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/your-repo/acent-messenger-backend.git
-   cd acent-messenger-backend
-   ```
-
-2. **Install dependencies**
-   ```bash
-   npm install
-   ```
-
-3. **Environment Setup**
-   ```bash
-   cp .env.example .env
-   ```
-
-4. **Configure Environment Variables**
-   Edit `.env` file with your configuration:
-   ```env
-   # Database
-   MONGODB_URI=mongodb://localhost:27017/acent-messenger
-   
-   # Bitcoin Network (testnet for development, mainnet for production)
-   BITCOIN_NETWORK=testnet
-   
-   # Platform Configuration
-   PLATFORM_FEE_PERCENTAGE=0.005  # 0.5%
-   ADMIN_WALLET_ADDRESS=your_admin_wallet_address
-   
-   # Security
-   JWT_SECRET=your_super_secure_jwt_secret
-   DAILY_TRANSACTION_LIMIT=100000000  # 1 BTC in satoshis
-   HIGH_VALUE_2FA_THRESHOLD=20000000  # 0.2 BTC
-   ```
-
-5. **Start the Application**
-   ```bash
-   # Development
-   npm run dev
-   
-   # Production
-   npm start
-   ```
-
-## 🔐 Security Considerations
-
-### Private Key Security
-- Private keys are encrypted using AES-256-GCM with user-provided passwords
-- Unique salt generated for each private key
-- Keys are never stored in plaintext
-- Memory is cleared after decryption operations
-
-### Network Security
-- Rate limiting on all endpoints
-- IP-based and user-based rate limiting
-- CORS configuration for web applications
-- Helmet.js for security headers
-
-### Transaction Security
-- Multi-layer validation for all transactions
-- Daily transaction limits
-- Suspicious activity detection
-- Optional 2FA for high-value transactions
-- Comprehensive audit logging
-
-### Best Practices Implemented
-- Input sanitization and validation
-- SQL injection prevention (NoSQL injection for MongoDB)
-- XSS protection
-- CSRF protection
-- Secure session management
-
-## 📖 API Documentation
-
-### Authentication
-All wallet endpoints require authentication. Include JWT token in Authorization header:
 ```
-Authorization: Bearer <your_jwt_token>
+src/
+├── config/          # Configuration files
+│   ├── db.js       # MongoDB connection
+│   ├── redis.js    # Redis configuration
+│   ├── email.js    # Email service setup
+│   ├── sms.js      # Twilio SMS integration
+│   ├── socket.js   # Socket.io configuration
+│   └── file.js     # AWS S3 file upload
+├── controller/      # Route controllers
+│   ├── admin/      # Admin-specific controllers
+│   └── user/       # User-specific controllers
+├── model/          # MongoDB schemas
+├── routes/         # API route definitions
+├── middleware/     # Custom middleware
+├── services/       # Business logic services
+├── validator/      # Input validation
+├── exception/      # Error handling
+├── cronJob/        # Scheduled tasks
+├── events/         # Event handlers
+├── utils/          # Utility functions
+└── view/           # Email templates
 ```
 
-### Wallet Endpoints
+## 📦 Dependencies
 
-#### Create Wallet
-```http
-POST /api/wallet/create
-Content-Type: application/json
+### Core Dependencies
+- **express**: Web framework
+- **mongoose**: MongoDB ODM
+- **socket.io**: Real-time communication
+- **redis**: Caching layer
+- **jsonwebtoken**: JWT authentication
+- **bcryptjs**: Password hashing
 
-{
-  "password": "SecurePassword123!",
-  "label": "My Main Wallet",
-  "mnemonic": "optional 12-24 word mnemonic phrase"
+### Bitcoin Integration
+- **bitcoinjs-lib**: Bitcoin operations
+- **bip32**: HD wallet support
+- **bip39**: Mnemonic phrase generation
+- **ecpair**: Elliptic curve cryptography
+
+### External Services
+- **aws-sdk**: Amazon S3 integration
+- **twilio**: SMS services
+- **nodemailer**: Email services
+
+### Utilities
+- **multer**: File upload handling
+- **moment**: Date manipulation
+- **winston**: Logging
+- **express-rate-limit**: Rate limiting
+- **express-validator**: Input validation
+
+## 🚀 Installation & Setup
+
+### Prerequisites
+- Node.js (v16 or higher)
+- MongoDB (v4.4 or higher)
+- Redis (v6 or higher)
+- AWS S3 account (for file storage)
+- Twilio account (for SMS)
+
+### 1. Clone the Repository
+```bash
+git clone https://github.com/triggah61/acent-messenger-backend.git
+cd acent-messenger-backend
+```
+
+### 2. Install Dependencies
+```bash
+npm install
+```
+
+### 3. Environment Configuration
+Create a `.env` file in the root directory:
+
+```env
+# Application Configuration
+APP_NAME=Acent Messenger
+APP_URL=https://your-app-domain.com
+NODE_ENV=dev
+PORT=6000
+
+# Database Configuration
+MONGODB_URL=mongodb://localhost:27017/acent_messenger
+
+# Redis Configuration
+REDIS_HOST=localhost
+REDIS_PORT=6379
+REDIS_PASSWORD=
+REDIS_DB=0
+
+# JWT Configuration
+JWT_SECRET=your_super_secret_jwt_key_minimum_32_characters_long
+JWT_EXPIRES_IN=7d
+
+# AWS S3 Configuration
+AWS_S3_BUCKET=your-bucket-name
+AWS_S3_ACCESS_KEY_ID=your-access-key
+AWS_S3_SECRET_ACCESS_KEY=your-secret-key
+AWS_S3_REGION=us-east-1
+AWS_S3_PARENT_FOLDER=acent-messenger
+
+# Twilio SMS Configuration
+TWILIO_ACCOUNT_SID=your-twilio-account-sid
+TWILIO_AUTH_TOKEN=your-twilio-auth-token
+TWILIO_PHONE_NUMBER=your-twilio-phone-number
+
+# Email Configuration (SMTP)
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USERNAME=your-email@gmail.com
+SMTP_PASS=your-app-password
+SMTP_FROM_EMAIL=your-email@gmail.com
+
+# Scheduler Configuration
+RUN_SCHEDULER=yes
+
+
+BITCOIN_NETWORK=testnet #testnet,mainnet
+ADMIN_WALLET_ADDRESS=
+PLATFORM_FEE_PERCENTAGE=0.01 #1%
+WALLET_ENCRYPTION_KEY=
+
+# QuickNode Bitcoin Endpoints
+QUICKNODE_BITCOIN_MAINNET_ENDPOINT=https://your-mainnet-endpoint.btc.quiknode.pro/YOUR_API_KEY/
+QUICKNODE_BITCOIN_TESTNET_ENDPOINT=your-testnet-endpoint.btc.quiknode.pro/07ceddd37b4cea3946fc8622d4b2d617719a3e56/
+```
+
+### 4. Database Setup
+Ensure MongoDB is running:
+```bash
+# On macOS with Homebrew
+brew services start mongodb-community
+
+# On Ubuntu/Debian
+sudo systemctl start mongod
+
+# On Windows
+net start MongoDB
+```
+
+### 5. Redis Setup
+
+#### On macOS (Homebrew)
+```bash
+brew install redis
+brew services start redis
+```
+
+#### On Ubuntu/Debian
+```bash
+sudo apt update
+sudo apt install redis-server
+sudo systemctl start redis-server
+sudo systemctl enable redis-server
+```
+
+#### On CentOS/RHEL
+```bash
+sudo yum install epel-release
+sudo yum install redis
+sudo systemctl start redis
+sudo systemctl enable redis
+```
+
+#### On Windows
+1. Download Redis from https://redis.io/download
+2. Install and start the Redis service
+
+#### Verify Redis Installation
+```bash
+redis-cli ping
+# Should return: PONG
+```
+
+### 6. Start the Application
+
+#### Development Mode
+```bash
+npm run dev
+```
+
+#### Production Mode
+```bash
+npm start
+```
+
+The server will start on `http://localhost:6000`
+
+
+## 🚀 Production Deployment
+
+### Using PM2 (Recommended)
+
+#### 1. Install PM2
+```bash
+npm install -g pm2
+```
+
+#### 2. Create PM2 Ecosystem File
+Create `ecosystem.config.js`:
+
+```javascript
+module.exports = {
+  apps: [{
+    name: 'acent-messenger',
+    script: 'server.js',
+    instances: 'max',
+    exec_mode: 'cluster',
+    env: {
+      NODE_ENV: 'production',
+      PORT: 6000
+    },
+    error_file: './logs/err.log',
+    out_file: './logs/out.log',
+    log_file: './logs/combined.log',
+    time: true
+  }]
+};
+```
+
+#### 3. Start with PM2
+```bash
+pm2 start ecosystem.config.js
+pm2 save
+pm2 startup
+```
+
+### Nginx Reverse Proxy
+Create `/etc/nginx/sites-available/acent-messenger`:
+
+```nginx
+server {
+    listen 80;
+    server_name your-domain.com;
+
+    location / {
+        proxy_pass http://localhost:6000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+    }
+
+    location /socket.io/ {
+        proxy_pass http://localhost:6000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
 }
 ```
 
-#### Import Wallet
-```http
-POST /api/wallet/import
-Content-Type: application/json
-
-{
-  "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
-  "password": "SecurePassword123!",
-  "label": "Imported Wallet"
-}
-```
-
-#### Get Wallets
-```http
-GET /api/wallet/list
-```
-
-#### Get Wallet Balance
-```http
-GET /api/wallet/:walletId/balance
-```
-
-#### Send Transaction
-```http
-POST /api/wallet/send
-Content-Type: application/json
-
-{
-  "walletId": "wallet_id_here",
-  "toAddress": "recipient_bitcoin_address",
-  "amount": 100000,
-  "password": "wallet_password",
-  "priority": "medium",
-  "description": "Payment description"
-}
-```
-
-#### Get Transaction History
-```http
-GET /api/wallet/:walletId/transactions?page=1&limit=10&type=withdrawal&status=confirmed
-```
-
-#### Estimate Transaction Fee
-```http
-POST /api/wallet/estimate-fee
-Content-Type: application/json
-
-{
-  "walletId": "wallet_id_here",
-  "amount": 100000,
-  "priority": "medium"
-}
-```
-
-### Response Format
-All API responses follow this format:
-```json
-{
-  "success": true,
-  "message": "Operation completed successfully",
-  "data": {
-    // Response data here
-  }
-}
-```
-
-### Error Format
-```json
-{
-  "success": false,
-  "message": "Error description",
-  "code": "ERROR_CODE",
-  "details": {
-    // Additional error details
-  }
-}
+Enable the site:
+```bash
+sudo ln -s /etc/nginx/sites-available/acent-messenger /etc/nginx/sites-enabled/
+sudo nginx -t
+sudo systemctl restart nginx
 ```
 
 ## 🔧 Configuration
 
-### Environment Variables
+### MongoDB Configuration
+- Default connection: `mongodb://localhost:27017/acent_messenger`
+- Supports MongoDB Atlas for cloud deployment
+- Automatic index creation for optimal performance
 
-| Variable | Description | Default | Required |
-|----------|-------------|---------|----------|
-| `PORT` | Server port | `3000` | No |
-| `NODE_ENV` | Environment mode | `development` | No |
-| `JWT_SECRET` | JWT signing secret | | Yes |
-| `JWT_EXPIRE` | JWT expiration time | `7d` | No |
-| `MONGODB_URI` | MongoDB connection string | | Yes |
-| `BITCOIN_NETWORK` | Bitcoin network (mainnet/testnet) | `testnet` | Yes |
-| `QUICKNODE_BITCOIN_MAINNET_ENDPOINT` | QuickNode Bitcoin mainnet endpoint | | Yes |
-| `QUICKNODE_BITCOIN_TESTNET_ENDPOINT` | QuickNode Bitcoin testnet endpoint | | Yes |
-| `WALLET_ENCRYPTION_KEY` | Wallet encryption key | | Yes |
-| `ADMIN_WALLET_ADDRESS` | Admin wallet for fee collection | | No |
-| `PLATFORM_FEE_PERCENTAGE` | Platform fee (%) | `0.5` | No |
-| `CUSTOM_FEE_RATE` | Custom fee rate (sat/byte) | `5` | No |
+### Redis Configuration
+- Used for caching user sessions and temporary data
+- Improves application performance significantly
+- Fallback mechanism if Redis is unavailable
 
-### Fee Configuration
-- **Low Priority**: 1 satoshi/byte (~60-120 minutes)
-- **Medium Priority**: 5 satoshis/byte (~10-30 minutes)
-- **High Priority**: 10 satoshis/byte (~5-15 minutes)
-- **Platform Fee**: 0.5% of transaction amount (configurable)
+### File Storage (AWS S3)
+- All uploaded files stored in AWS S3
+- Configurable bucket and folder structure
+- Public read access for media files
 
-## 🚀 Deployment
+### Bitcoin Network
+- Testnet support for development
+- Mainnet support for production
+- Configurable via environment variables
 
-### Docker Deployment
-```dockerfile
-FROM node:16-alpine
-WORKDIR /app
-COPY package*.json ./
-RUN npm ci --only=production
-COPY . .
-EXPOSE 3000
-CMD ["npm", "start"]
+## 📊 Monitoring & Logging
+
+### Winston Logging
+- Error logs written to `error.log`
+- Console logging in development
+- Structured JSON logging format
+
+### Health Monitoring
+- Database connection monitoring
+- Redis connection status
+- Bitcoin network connectivity
+
+## 🔒 Security Features
+
+- JWT token authentication
+- Password hashing with bcrypt
+- Rate limiting on API endpoints
+- Input validation and sanitization
+- CORS configuration
+- Environment variable protection
+
+## 🧪 Development
+
+### Running Tests
+```bash
+npm test
 ```
 
-### Production Checklist
-- [ ] Set `BITCOIN_NETWORK=mainnet` for production
-- [ ] Configure secure `JWT_SECRET`
-- [ ] Set up MongoDB replica set
-- [ ] Configure admin wallet address
-- [ ] Set up monitoring and alerting
-- [ ] Configure backup strategies
-- [ ] Set up SSL/TLS certificates
-- [ ] Configure firewall rules
-- [ ] Set up log rotation
+### Code Linting
+```bash
+npm run lint
+```
 
-## 🔍 Monitoring
-
-### Transaction Monitoring
-The system includes automatic transaction monitoring:
-- Runs every 2 minutes via cron job
-- Checks pending transactions for confirmations
-- Updates transaction status automatically
-- Logs all monitoring activities
-
-### Health Checks
-Monitor these endpoints for system health:
-- `/api/wallet/bitcoin-price` - Blockchain connectivity
-- Database connection status
-- Memory and CPU usage
-- Transaction processing queue
-
-## 🛡 Security Auditing
-
-### Regular Security Tasks
-1. **Update Dependencies**: Regular security updates
-2. **Key Rotation**: Periodic JWT secret rotation
-3. **Access Review**: Regular access control review
-4. **Log Analysis**: Monitor for suspicious activities
-5. **Backup Testing**: Regular backup and recovery testing
-
-### Compliance Features
-- Comprehensive audit logging
-- Transaction traceability
-- KYC/AML hooks (configurable)
-- Regulatory reporting capabilities
+### Development with Nodemon
+```bash
+npm run dev
+```
 
 ## 🤝 Contributing
 
 1. Fork the repository
-2. Create feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit changes (`git commit -m 'Add AmazingFeature'`)
-4. Push to branch (`git push origin feature/AmazingFeature`)
-5. Open Pull Request
-
-### Development Guidelines
-- Follow ESLint configuration
-- Write comprehensive tests
-- Update documentation
-- Follow security best practices
-- Add proper error handling
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
 ## 📝 License
 
-This project is licensed under the ISC License - see the LICENSE file for details.
+This project is licensed under the ISC License - see the [LICENSE](LICENSE) file for details.
 
-## ⚠️ Disclaimer
+## 🆘 Troubleshooting
 
-This software is provided "as is" without warranty. Use at your own risk. Always test thoroughly on testnet before using with real Bitcoin. The developers are not responsible for any loss of funds.
+### Common Issues
 
-## 🆘 Support
+#### MongoDB Connection Issues
+```bash
+# Check MongoDB status
+sudo systemctl status mongod
+
+# Restart MongoDB
+sudo systemctl restart mongod
+```
+
+#### Redis Connection Issues
+```bash
+# Check Redis status
+redis-cli ping
+
+# Restart Redis
+sudo systemctl restart redis
+```
+
+#### Bitcoin Wallet Issues
+- Ensure proper Bitcoin library versions
+- Check network connectivity
+- Verify API endpoints
+
+#### File Upload Issues
+- Verify AWS S3 credentials
+- Check bucket permissions
+- Ensure proper CORS configuration
+
+### Logs Location
+- Application logs: `error.log`
+- PM2 logs: `~/.pm2/logs/`
+- System logs: `/var/log/`
+
+## 📞 Support
 
 For support and questions:
-- Create an issue in the GitHub repository
-- Check the documentation
-- Review the FAQ section
+- Create an issue on GitHub
+- Check the [documentation](https://github.com/your-repo/acent-messenger-backend-community/wiki)
+- Join our community discussions
 
-## 📚 Additional Resources
+## 🔮 Future Roadmap
 
-- [Bitcoin Developer Guide](https://developer.bitcoin.org/)
-- [BIP39 Specification](https://github.com/bitcoin/bips/blob/master/bip-0039.mediawiki)
-- [BIP44 Specification](https://github.com/bitcoin/bips/blob/master/bip-0044.mediawiki)
-- [BitcoinJS Library Documentation](https://github.com/bitcoinjs/bitcoinjs-lib)
-
-### QuickNode Configuration
-
-1. **Create QuickNode Account**: Sign up at [QuickNode](https://www.quicknode.com)
-2. **Create Bitcoin Endpoints**: 
-   - Create a Bitcoin **Mainnet** endpoint
-   - Create a Bitcoin **Testnet** endpoint
-   - **No add-ons required** - basic Bitcoin RPC is sufficient for transaction broadcasting
-3. **Copy Endpoint URLs**: Save your endpoint URLs to environment variables:
-   ```bash
-   QUICKNODE_BITCOIN_MAINNET_ENDPOINT=https://your-mainnet-endpoint.btc.quiknode.pro/YOUR_API_KEY/
-   QUICKNODE_BITCOIN_TESTNET_ENDPOINT=https://your-testnet-endpoint.btc-testnet.quiknode.pro/YOUR_API_KEY/
-   ```
-
-### Hybrid Architecture
-
-This wallet service uses a **hybrid approach** for optimal cost and reliability:
-
-- **QuickNode**: Used only for **transaction broadcasting** (`sendrawtransaction`)
-- **Blockstream.info API**: Used for **balance queries** and **UTXO fetching** (free and reliable)
-- **No expensive add-ons required**: Saves costs while maintaining full functionality
-
-> **Cost Savings**: By using free blockchain explorer APIs for queries and QuickNode only for broadcasting, you avoid the expensive BTC Blockbook JSON-RPC add-on (typically $20-50/month extra).
+- [ ] End-to-end encryption
+- [ ] Multi-currency wallet support
+- [ ] Voice and video calling
+- [ ] Advanced analytics dashboard
+- [ ] API documentation with Swagger
+- [ ] Comprehensive test suite
+- [ ] Performance optimization
 
 ---
 
-**Built with ❤️ for secure Bitcoin transactions**
+**Built with ❤️ by the Acent Team**
