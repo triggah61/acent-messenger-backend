@@ -18,8 +18,15 @@ exports.createOtp = async (userId, criteria, via, phone, data = {}) => {
     via,
   });
 
-  if (via == "phone") {
-    let sms = new SMS(phone).text(`Your OTP is ${code}`).send();
+  if (via == "phone" && process.env.NODE_ENV !== "dev") {
+    try {
+      let smsResult = await new SMS(phone).text(`Your OTP is ${code}`).send();
+      console.log('OTP SMS sent successfully:', smsResult);
+    } catch (error) {
+      console.error('Failed to send OTP SMS:', error.message);
+      // Don't throw error here to allow OTP creation to proceed
+      // The user can still be notified about SMS failure separately
+    }
   }
 
   return verification;
@@ -46,8 +53,14 @@ exports.resendOtp = async (traceId) => {
     };
   }
 
-  if (via == "phone") {
-    let sms = new SMS(phoneWithDialCode).text(`Your OTP is ${code}`).send();
+  if (via == "phone" && process.env.NODE_ENV !== "dev") {
+    try {
+      let smsResult = await new SMS(phoneWithDialCode).text(`Your OTP is ${code}`).send();
+      console.log('Resend OTP SMS sent successfully:', smsResult);
+    } catch (error) {
+      console.error('Failed to resend OTP SMS:', error.message);
+      // Don't throw error here to allow OTP resend to proceed
+    }
   }
 
   return verification;

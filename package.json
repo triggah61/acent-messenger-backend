@@ -41,6 +41,7 @@
     "socket.io": "^4.8.1",
     "speakeasy": "^2.0.0",
     "tiny-secp256k1": "^2.2.3",
+    "twilio": "^5.7.1",
     "underscore": "^1.13.6",
     "uuid": "^9.0.1",
     "Validator": "^1.1.4",

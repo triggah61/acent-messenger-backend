@@ -17,15 +17,27 @@ exports.sendInvitation = catchAsync(async (req, res) => {
     throw new AppError("User already exists", 400);
   }
 
-  // Send SMS to the user
-  const sms = new SMS(`${dialCode}${phone}`)
-    .text(
-      `You have been invited to join the ${process.env.APP_NAME} app. Please download the app from the link below: ${process.env.APP_URL}`
-    )
-    .send();
-  return res.status(200).json({
-    message: "Invitation SMS sent to the user",
-  });
+  try {
+    // Send SMS to the user
+    const smsResult = await new SMS(`${dialCode}${phone}`)
+      .text(
+        `You have been invited to join the ${process.env.APP_NAME} app. Please download the app from the link below: ${process.env.APP_URL}`
+      )
+      .send();
+    
+    console.log('Invitation SMS sent successfully:', smsResult);
+    
+    return res.status(200).json({
+      message: "Invitation SMS sent to the user",
+      smsResult: {
+        messageSid: smsResult.messageSid,
+        status: smsResult.status
+      }
+    });
+  } catch (error) {
+    console.error('Failed to send invitation SMS:', error.message);
+    throw new AppError(`Failed to send invitation SMS: ${error.message}`, 500);
+  }
 });
 
 exports.findContact = catchAsync(async (req, res) => {
