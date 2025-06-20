@@ -218,7 +218,7 @@ exports.sessionList = catchAsync(async (req, res) => {
         ],
       },
     },
-    
+
     // Map recipients with their user details
     {
       $addFields: {
@@ -281,11 +281,7 @@ exports.sessionList = catchAsync(async (req, res) => {
           $cond: {
             if: { $eq: ["$type", "personal"] },
             then: {
-              $concat: [
-                "$otherUser.firstName",
-                " ",
-                "$otherUser.lastName",
-              ],
+              $concat: ["$otherUser.firstName", " ", "$otherUser.lastName"],
             },
             else: "$title",
           },
@@ -400,6 +396,18 @@ exports.sendMessage = catchAsync(async (req, res) => {
     .lean();
 
   io.to(chatSessionId).emit("new_message", messageInfo);
+
+  for (const recipient of chatSession.receipients) {
+    io.to(`user_${recipient.user}`).emit("global_new_message", {
+      messageId: messageInfo._id,
+      chatSessionId: messageInfo.chatSession,
+      senderId: messageInfo.sender._id,
+      senderName: `${messageInfo.sender.firstName} ${messageInfo.sender.lastName}`,
+      content: messageInfo.content,
+      attachments: messageInfo.attachments,
+      timestamp: messageInfo.createdAt,
+    });
+  }
 
   return res.status(200).json({
     message: "Message sent successfully",

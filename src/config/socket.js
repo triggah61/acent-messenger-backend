@@ -83,6 +83,17 @@ const initSocketServer = (server) => {
       // userId: socket.user.id,
     });
 
+    socket.on("join_user_room", (userId) => {
+      socket.join(`user_${userId}`);
+      console.log(`User ${userId} joined their personal room`);
+    });
+
+    // User leaves their personal room
+    socket.on("leave_user_room", (userId) => {
+      socket.leave(`user_${userId}`);
+      console.log(`User ${userId} left their personal room`);
+    });
+
     socket.on("join_chat", (chatSessionId) => {
       console.log("join_chat", chatSessionId);
       socket.join(chatSessionId);
