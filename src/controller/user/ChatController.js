@@ -398,15 +398,7 @@ exports.sendMessage = catchAsync(async (req, res) => {
   io.to(chatSessionId).emit("new_message", messageInfo);
 
   for (const recipient of chatSession.receipients) {
-    io.to(`user_${recipient.user}`).emit("global_new_message", {
-      messageId: messageInfo._id,
-      chatSessionId: messageInfo.chatSession,
-      senderId: messageInfo.sender._id,
-      senderName: `${messageInfo.sender.firstName} ${messageInfo.sender.lastName}`,
-      content: messageInfo.content,
-      attachments: messageInfo.attachments,
-      timestamp: messageInfo.createdAt,
-    });
+    io.to(`user_${recipient.user}`).emit("global_new_message", messageInfo);
   }
 
   return res.status(200).json({
