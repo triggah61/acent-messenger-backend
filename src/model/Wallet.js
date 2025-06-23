@@ -11,11 +11,22 @@ const walletSchema = new Schema(
       required: true,
       index: true,
     },
+    btcAddress: {
+      type: String,
+      default: null,
+    },
+    ethAddress: {
+      type: String,
+      default: null,
+    },
+    bscAddress: {
+      type: String,
+      default: null,
+    },
+    // Legacy address field for backward compatibility
     address: {
       type: String,
-      required: true,
-      unique: true,
-      index: true,
+      default: null,
     },
     // Encrypted private key
     encryptedPrivateKey: {
@@ -187,6 +198,22 @@ walletSchema.methods.encryptMnemonic = async function (mnemonic, password) {
 walletSchema.methods.decryptMnemonic = async function (password) {
   // Return plain text mnemonic for now (as per your commented logic)
   return this.encryptedMnemonic;
+};
+
+// Static methods
+walletSchema.statics.findByUserId = function (userId) {
+  return this.find({ userId, status: { $ne: 'deleted' } }).sort({ createdAt: -1 });
+};
+
+walletSchema.statics.findByAddress = function (address) {
+  return this.findOne({
+    $or: [
+      { btcAddress: address },
+      { ethAddress: address },
+      { bscAddress: address },
+      { address: address } // Legacy field
+    ]
+  });
 };
 
 module.exports = mongoose.model("Wallet", walletSchema);

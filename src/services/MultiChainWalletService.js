@@ -1,7 +1,6 @@
 const bitcoin = require("bitcoinjs-lib");
 const crypto = require("crypto");
 const bip39 = require("bip39");
-const { ethers } = require("ethers");
 // const bip32 = require("bip32");
 
 const { BIP32Factory } = require("bip32");
@@ -96,7 +95,7 @@ const Wallet = require("../model/Wallet");
 const Transaction = require("../model/Transaction");
 const AppError = require("../exception/AppError");
 
-class MultiChainWalletService {
+class BitcoinWalletService {
   constructor() {
     // Use testnet for development, mainnet for production
     this.network =
@@ -104,7 +103,7 @@ class MultiChainWalletService {
         ? bitcoin.networks.bitcoin
         : bitcoin.networks.testnet;
 
-    // QuickNode endpoints configuration for Bitcoin
+    // QuickNode endpoints configuration
     this.rpcConfig = {
       testnet: {
         endpoint:
@@ -151,11 +150,12 @@ class MultiChainWalletService {
   }
 
   /**
-   * Create a new HD wallet for a user with Bitcoin, Ethereum, and BSC addresses
+   * Create a new HD wallet for a user
    */
   async createWallet(userId, label = "Main Wallet") {
     try {
       // Generate mnemonic if not provided
+
       let mnemonic = this.generateMnemonic();
 
       // Validate mnemonic
@@ -169,62 +169,38 @@ class MultiChainWalletService {
       // Create HD root
       const root = bip32.fromSeed(seed, this.network);
 
-      // === BITCOIN ADDRESS GENERATION ===
-      // Derive Bitcoin wallet using BIP44 path: m/44'/coin_type'/account'/change/address_index
+      // Derive wallet using BIP44 path: m/44'/coin_type'/account'/change/address_index
       // For Bitcoin: m/44'/0'/0'/0/0 (mainnet) or m/44'/1'/0'/0/0 (testnet)
       const coinType = this.network === bitcoin.networks.bitcoin ? 0 : 1;
-      const btcDerivationPath = `m/44'/${coinType}'/0'/0/0`;
-      const btcChild = root.derivePath(btcDerivationPath);
+      const derivationPath = `m/44'/${coinType}'/0'/0/0`;
+
+      const child = root.derivePath(derivationPath);
 
       // Generate SegWit address (P2WPKH) - starts with 'bc1' for mainnet, 'tb1' for testnet
-      const { address: btcAddress } = bitcoin.payments.p2wpkh({
-        pubkey: btcChild.publicKey,
+      const { address } = bitcoin.payments.p2wpkh({
+        pubkey: child.publicKey,
         network: this.network,
       });
 
-      // === ETHEREUM ADDRESS GENERATION ===
-      // Derive Ethereum wallet using BIP44 path: m/44'/60'/0'/0/0
-      const ethDerivationPath = `m/44'/60'/0'/0/0`;
-      const ethChild = root.derivePath(ethDerivationPath);
-
-      // Create Ethereum wallet from private key
-      const ethPrivateKey = ethChild.privateKey.toString("hex");
-      const ethWallet = new ethers.Wallet(ethPrivateKey);
-      const ethAddress = ethWallet.address;
-
-      // === BSC ADDRESS GENERATION ===
-      // BSC uses the same derivation path as Ethereum (since it's EVM compatible)
-      // The address will be the same as Ethereum address
-      const bscAddress = ethAddress; // BSC and ETH addresses are identical
-
-      // Create wallet object with all three addresses
+      // Create wallet object
       const wallet = new Wallet({
         userId,
-        btcAddress,
-        ethAddress,
-        bscAddress,
-        address: btcAddress, // Keep legacy field for backward compatibility
-        publicKey: btcChild.publicKey.toString("hex"),
-        derivationPath: btcDerivationPath, // Store Bitcoin derivation path as primary
+        address,
+        publicKey: child.publicKey.toString("hex"),
+        derivationPath,
         walletType: "main",
         network:
           this.network === bitcoin.networks.bitcoin ? "mainnet" : "testnet",
         label,
         status: "active",
-        balances: {
-          btc: 0,
-          eth: 0,
-          bsc: 0,
-        },
       });
-
       let walletEncryptionKey = process.env.WALLET_ENCRYPTION_KEY;
 
-      // Encrypt Bitcoin private key (primary)
-      const btcPrivateKeyWIF = btcChild.toWIF();
-      wallet.encryptPrivateKey(btcPrivateKeyWIF, walletEncryptionKey);
+      // Encrypt private key
+      const privateKeyWIF = child.toWIF();
+      wallet.encryptPrivateKey(privateKeyWIF, walletEncryptionKey);
 
-      // Encrypt mnemonic (can derive all other private keys from this)
+      // Encrypt mnemonic
       wallet.encryptMnemonic(mnemonic, walletEncryptionKey);
 
       // Save wallet
@@ -237,39 +213,33 @@ class MultiChainWalletService {
           ethAddress: wallet.ethAddress,
           bscAddress: wallet.bscAddress,
           label: wallet.label,
-          balances: wallet.balances,
+          balance: wallet.balance,
           network: wallet.network,
           derivationPath: wallet.derivationPath,
         },
         mnemonic, // Return mnemonic for backup
         success: true,
-        addresses: {
-          bitcoin: btcAddress,
-          ethereum: ethAddress,
-          bsc: bscAddress,
-        },
       };
     } catch (error) {
-      throw new AppError(
-        `Failed to create multi-chain wallet: ${error.message}`,
-        500
-      );
+      throw new AppError(`Failed to create wallet: ${error.message}`, 500);
     }
   }
 
   /**
-   * Get user's wallets with multi-chain addresses
+   * Get user's wallets
    */
   async getUserWallets(userId) {
     try {
       const wallets = await Wallet.findByUserId(userId);
+
+
       return wallets.map((wallet) => ({
         id: wallet._id,
         btcAddress: wallet.btcAddress,
         ethAddress: wallet.ethAddress,
         bscAddress: wallet.bscAddress,
         label: wallet.label,
-        balances: wallet.balances || { btc: 0, eth: 0, bsc: 0 },
+        balance: wallet.balance,
         network: wallet.network,
         walletType: wallet.walletType,
         status: wallet.status,
@@ -316,6 +286,7 @@ class MultiChainWalletService {
       throw new AppError(`Failed to get wallet balance: ${error.message}`, 500);
     }
   }
+
 
   /**
    * Get UTXOs for an address using blockchain explorer API
@@ -413,6 +384,12 @@ class MultiChainWalletService {
     const privateKeyWIF = wallet.decryptPrivateKey(walletEncryptionKey);
     console.log("privateKeyWIF", privateKeyWIF);
     const keyPair = ECPair.fromWIF(privateKeyWIF, this.network);
+
+    // Check wallet balance first
+    console.log("=== WALLET BALANCE CHECK ===");
+    console.log("Wallet address:", wallet.btcAddress);
+    console.log("Wallet network:", wallet.network);
+    console.log("Current wallet balance (from DB):", wallet.balance);
 
     try {
       const balanceInfo = await this.getWalletBalance(wallet.btcAddress);
@@ -852,57 +829,12 @@ class MultiChainWalletService {
   /**
    * Validate Bitcoin address
    */
-  validateBitcoinAddress(address) {
+  validateAddress(address) {
     try {
-      bitcoin.address.toOutputScript(address, this.network);
+      bitcoin.btcAddress.toOutputScript(address, this.network);
       return true;
     } catch (error) {
       return false;
-    }
-  }
-
-  /**
-   * Validate Ethereum address (also works for BSC since they use the same format)
-   */
-  validateEthereumAddress(address) {
-    try {
-      return ethers.utils.isAddress(address);
-    } catch (error) {
-      return false;
-    }
-  }
-
-  /**
-   * Validate BSC address (same as Ethereum)
-   */
-  validateBSCAddress(address) {
-    return this.validateEthereumAddress(address);
-  }
-
-  /**
-   * Validate address for any supported chain
-   */
-  validateAddress(address, chain = "auto") {
-    if (chain === "auto") {
-      // Auto-detect chain type
-      return (
-        this.validateBitcoinAddress(address) ||
-        this.validateEthereumAddress(address)
-      );
-    }
-
-    switch (chain.toLowerCase()) {
-      case "btc":
-      case "bitcoin":
-        return this.validateBitcoinAddress(address);
-      case "eth":
-      case "ethereum":
-        return this.validateEthereumAddress(address);
-      case "bsc":
-      case "bnb":
-        return this.validateBSCAddress(address);
-      default:
-        return false;
     }
   }
 
@@ -935,20 +867,21 @@ class MultiChainWalletService {
   }
 
   /**
-   * Test connection and validate multi-chain setup
+   * Test QuickNode connection and available methods
    */
   async testConnection() {
     try {
-      console.log("=== Multi-Chain Wallet Service Test ===");
+      console.log("=== Connection Test ===");
+      console.log("QuickNode endpoint:", this.currentEndpoint);
       console.log(
-        "Bitcoin network:",
+        "Network:",
         this.network === bitcoin.networks.bitcoin ? "mainnet" : "testnet"
       );
-      console.log("QuickNode endpoint:", this.currentEndpoint);
-      console.log("Ethers version:", ethers.version);
-      console.log("Supported chains: Bitcoin, Ethereum, BSC");
+      console.log(
+        "Usage: QuickNode for transaction broadcasting, Blockstream.info for balance/UTXOs"
+      );
 
-      // Test Bitcoin connection
+      // Test basic connection with getblockchaininfo
       const basicRequest = {
         jsonrpc: "2.0",
         id: 1,
@@ -963,34 +896,15 @@ class MultiChainWalletService {
 
       if (response.data.error) {
         console.error(
-          "❌ Bitcoin QuickNode connection failed:",
+          "❌ QuickNode connection failed:",
           response.data.error.message
         );
         return { success: false, error: response.data.error.message };
       }
 
-      console.log("✅ Bitcoin QuickNode connection successful");
+      console.log("✅ QuickNode connection successful");
       console.log("Chain:", response.data.result.chain);
       console.log("Blocks:", response.data.result.blocks);
-
-      // Test Ethereum address generation
-      try {
-        const testMnemonic =
-          "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
-        const seed = await bip39.mnemonicToSeed(testMnemonic);
-        const root = bip32.fromSeed(seed, this.network);
-        const ethChild = root.derivePath("m/44'/60'/0'/0/0");
-        const ethPrivateKey = ethChild.privateKey.toString("hex");
-        const ethWallet = new ethers.Wallet(ethPrivateKey);
-
-        console.log("✅ Ethereum address generation working");
-        console.log("Test ETH address:", ethWallet.address);
-      } catch (ethError) {
-        console.log(
-          "⚠️  Ethereum address generation test failed:",
-          ethError.message
-        );
-      }
 
       // Test blockchain explorer API
       const networkPath =
@@ -1013,72 +927,23 @@ class MultiChainWalletService {
 
       return {
         success: true,
-        chains: {
-          bitcoin: {
-            chain: response.data.result.chain,
-            blocks: response.data.result.blocks,
-            status: "connected",
-            provider: "QuickNode",
-          },
-          ethereum: {
-            status: "address_generation_ready",
-            provider: "ethers.js",
-            note: "Balance checking and transactions not yet implemented",
-          },
-          bsc: {
-            status: "address_generation_ready",
-            provider: "ethers.js",
-            note: "Same as Ethereum - Balance checking and transactions not yet implemented",
-          },
+        quicknode: {
+          chain: response.data.result.chain,
+          blocks: response.data.result.blocks,
+          status: "connected",
+        },
+        blockchainExplorer: {
+          status: "available",
+          usage: "balance and UTXO queries",
         },
         setup:
-          "Multi-chain wallet service with Bitcoin, Ethereum, and BSC address generation",
+          "Hybrid: QuickNode for broadcasting + Blockstream.info for queries",
       };
     } catch (error) {
       console.error("❌ Connection test failed:", error.message);
       return { success: false, error: error.message };
     }
   }
-
-  /**
-   * Get Ethereum private key from wallet mnemonic
-   */
-  async getEthereumPrivateKey(walletId, walletEncryptionKey) {
-    try {
-      const wallet = await Wallet.findById(walletId);
-      if (!wallet) {
-        throw new AppError("Wallet not found", 404);
-      }
-
-      // Decrypt mnemonic
-      const mnemonic = await wallet.decryptMnemonic(walletEncryptionKey);
-
-      // Generate seed from mnemonic
-      const seed = await bip39.mnemonicToSeed(mnemonic);
-
-      // Create HD root
-      const root = bip32.fromSeed(seed, this.network);
-
-      // Derive Ethereum wallet using BIP44 path: m/44'/60'/0'/0/0
-      const ethDerivationPath = `m/44'/60'/0'/0/0`;
-      const ethChild = root.derivePath(ethDerivationPath);
-
-      return ethChild.privateKey.toString("hex");
-    } catch (error) {
-      throw new AppError(
-        `Failed to get Ethereum private key: ${error.message}`,
-        500
-      );
-    }
-  }
-
-  /**
-   * Get BSC private key from wallet mnemonic (same as Ethereum)
-   */
-  async getBSCPrivateKey(walletId, walletEncryptionKey) {
-    // BSC uses the same derivation as Ethereum
-    return this.getEthereumPrivateKey(walletId, walletEncryptionKey);
-  }
 }
 
-module.exports = new MultiChainWalletService();
+module.exports = new BitcoinWalletService();

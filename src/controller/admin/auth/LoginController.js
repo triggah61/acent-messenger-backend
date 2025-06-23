@@ -60,7 +60,7 @@ exports.login = catchAsync(async (req, res) => {
 
   if (user && user.status == "blocked") {
     throw new AppError("User is blocked", 400);
-  } else if (dialCode !== user?.dialCode) {
+  } else if (user && dialCode !== user?.dialCode) {
     throw new AppError("Invalid dial code", 400);
   }
 

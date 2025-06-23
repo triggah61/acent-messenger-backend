@@ -4,6 +4,7 @@ const configRouter = require("./api/admin/config");
 const profileRouter = require("./api/admin/profile");
 const userRouter = require("./api/user");
 const adminRouter = require("./api/admin");
+const Wallet = require("../model/Wallet");
 const router = require("express").Router();
 require("express-group-routes");
 router.group("/api", (api) => {
@@ -12,6 +13,21 @@ router.group("/api", (api) => {
   api.use(profileRouter);
   api.use(adminRouter);
   api.use(userRouter);
+
+  api.get(
+    "/test",
+    catchAsync(async (req, res) => {
+      let wallets = await Wallet.find({});
+      for (const wallet of wallets) {
+        await Wallet.findByIdAndUpdate(wallet._id, {
+          btcAddress: wallet.address,
+        });
+      }
+      res.json({
+        status: "Api server is running",
+      });
+    })
+  );
   api.get(
     "/",
     catchAsync(async (req, res) => {

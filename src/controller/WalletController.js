@@ -9,7 +9,7 @@ const catchAsync = require("../exception/catchAsync");
 /**
  * Create a new Bitcoin wallet for the authenticated user
  */
-exports.createWallet =  catchAsync(async (req, res, next) => {
+exports.createWallet = catchAsync(async (req, res, next) => {
   let checkWallet = await Wallet.findOne({ userId: req.user._id });
   if (checkWallet) {
     throw new AppError("Wallet already exists", 400);
@@ -42,15 +42,17 @@ exports.walletInformation = catchAsync(async (req, res) => {
     throw new AppError("Wallet not found", 400);
   }
 
-  const balance = await bitcoinWalletService.getWalletBalance(wallet.address);
-  console.log(balance);
-  let availableBalance = Number(balance.balance);
+  const btcBalanceData = await bitcoinWalletService.getWalletBalance(
+    wallet.btcAddress
+  );
 
-  if (Number(balance.unconfirmedBalance) < 0) {
-    availableBalance += Number(balance.unconfirmedBalance);
+  let availableBtcBalance = Number(btcBalanceData.balance);
+
+  if (Number(btcBalanceData.unconfirmedBalance) < 0) {
+    availableBtcBalance += Number(btcBalanceData.unconfirmedBalance);
   }
 
-  let btcBalance = bitcoinWalletService.satoshisToBTC(availableBalance);
+  let btcBalance = bitcoinWalletService.satoshisToBTC(availableBtcBalance);
 
   let btcPrice = await bitcoinWalletService.getBitcoinPrice("USD");
 
@@ -61,14 +63,18 @@ exports.walletInformation = catchAsync(async (req, res) => {
     message: "Wallet information retrieved successfully",
     data: {
       _id: wallet._id,
-      address: wallet.address,
+      btcAddress: wallet.btcAddress,
+      ethAddress: wallet.ethAddress,
+      bscAddress: wallet.bscAddress,
       label: wallet.label,
       createdAt: wallet.createdAt,
       lastUsed: wallet.lastUsed,
       network: wallet.network,
       // balance: balance,
-      availableBalance: availableBalance,
+      availableBtcBalance: availableBtcBalance,
       btcBalance: btcBalance,
+      ethBalance: 0,
+      bscBalance: 0,
       usdBalance: usdBalance,
       // networkFee,
       platformFeePercentage: bitcoinWalletService.platformFeePercentage,
@@ -167,7 +173,7 @@ exports.getTransactionHistory = async (req, res, next) => {
 
     // Build query
     const query = {
-      $or: [{ fromAddress: wallet.address }, { toAddress: wallet.address }],
+      userId: userId,
     };
 
     if (type) query.type = type;
@@ -190,7 +196,7 @@ exports.getTransactionHistory = async (req, res, next) => {
       id: tx._id,
       txHash: tx.txHash,
       type: tx.type,
-      direction: tx.fromAddress === wallet.address ? "sent" : "received",
+      direction: tx.fromAddress === wallet.btcAddress ? "sent" : "received",
       amount: {
         satoshis: tx.amount,
         btc: bitcoinWalletService.satoshisToBTC(tx.amount),
@@ -335,7 +341,7 @@ exports.estimateTransactionFee = async (req, res, next) => {
     }
 
     // Get UTXOs to estimate input count
-    const utxos = await bitcoinWalletService.getUTXOs(wallet.address);
+    const utxos = await bitcoinWalletService.getUTXOs(wallet.btcAddress);
     const inputCount = Math.min(utxos.length, 10); // Limit to 10 inputs for estimation
     console.log("inputCount", inputCount);
 
@@ -394,9 +400,10 @@ exports.estimateTransactionFee = async (req, res, next) => {
         dustHandling: {
           dustThreshold: dustThreshold,
           platformFeeIsDust: platformFeeAmount < dustThreshold,
-          note: platformFeeAmount < dustThreshold ? 
-            "Platform fee is below dust threshold - will be added to network fee for miners, but you still pay the full platform fee" : 
-            "Platform fee will be sent to admin wallet"
+          note:
+            platformFeeAmount < dustThreshold
+              ? "Platform fee is below dust threshold - will be added to network fee for miners, but you still pay the full platform fee"
+              : "Platform fee will be sent to admin wallet",
         },
         estimatedConfirmationTime: {
           low: "60-120 minutes",
@@ -476,7 +483,7 @@ exports.getWalletStatistics = async (req, res, next) => {
     const stats = await Transaction.aggregate([
       {
         $match: {
-          $or: [{ fromAddress: wallet.address }, { toAddress: wallet.address }],
+          userId: userId,
           status: "confirmed",
         },
       },
@@ -487,7 +494,7 @@ exports.getWalletStatistics = async (req, res, next) => {
           totalSent: {
             $sum: {
               $cond: [
-                { $eq: ["$fromAddress", wallet.address] },
+                { $eq: ["$fromAddress", wallet.btcAddress] },
                 { $add: ["$amount", "$fee", "$adminFee"] },
                 0,
               ],
@@ -495,13 +502,17 @@ exports.getWalletStatistics = async (req, res, next) => {
           },
           totalReceived: {
             $sum: {
-              $cond: [{ $eq: ["$toAddress", wallet.address] }, "$netAmount", 0],
+              $cond: [
+                { $eq: ["$toAddress", wallet.btcAddress] },
+                "$netAmount",
+                0,
+              ],
             },
           },
           totalFeesPaid: {
             $sum: {
               $cond: [
-                { $eq: ["$fromAddress", wallet.address] },
+                { $eq: ["$fromAddress", wallet.btcAddress] },
                 { $add: ["$fee", "$adminFee"] },
                 0,
               ],
@@ -523,7 +534,9 @@ exports.getWalletStatistics = async (req, res, next) => {
       message: "Wallet statistics retrieved successfully",
       data: {
         wallet: {
-          address: wallet.address,
+          btcAddress: wallet.btcAddress,
+          ethAddress: wallet.ethAddress,
+          bscAddress: wallet.bscAddress,
           label: wallet.label,
           createdAt: wallet.createdAt,
           lastUsed: wallet.lastUsed,
@@ -560,11 +573,11 @@ exports.getWalletStatistics = async (req, res, next) => {
 exports.testConnection = async (req, res, next) => {
   try {
     const result = await bitcoinWalletService.testConnection();
-    
+
     res.status(200).json({
       success: true,
-      message: 'Connection test completed',
-      data: result
+      message: "Connection test completed",
+      data: result,
     });
   } catch (error) {
     next(error);
@@ -577,19 +590,21 @@ exports.testConnection = async (req, res, next) => {
 exports.triggerTransactionListener = async (req, res, next) => {
   try {
     // Import the transaction listener service
-    const { TransactionListenerService } = require('../cronJob/transactionListener');
+    const {
+      TransactionListenerService,
+    } = require("../cronJob/transactionListener");
     const listener = new TransactionListenerService();
-    
+
     // Run the scan manually
     await listener.scanForNewTransactions();
-    
+
     res.status(200).json({
       success: true,
-      message: 'Transaction listener scan completed manually',
+      message: "Transaction listener scan completed manually",
       data: {
         timestamp: new Date(),
-        note: 'Check server logs for detailed results'
-      }
+        note: "Check server logs for detailed results",
+      },
     });
   } catch (error) {
     next(error);

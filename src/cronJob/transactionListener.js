@@ -46,7 +46,7 @@ class TransactionListenerService {
       }).select('address userId');
       
       return wallets.map(wallet => ({
-        address: wallet.address,
+        address: wallet.btcAddress,
         userId: wallet.userId,
         walletId: wallet._id
       }));
@@ -140,7 +140,7 @@ class TransactionListenerService {
         type: analysis.isIncoming ? 'deposit' : 'withdrawal',
         userId: walletData.userId,
         fromAddress: analysis.fromAddresses[0] || 'external',
-        toAddress: walletData.address,
+        toAddress: walletData.btcAddress,
         amount: analysis.incomingAmount,
         fee: analysis.fee,
         adminFee: 0, // No admin fee for incoming transactions
@@ -180,31 +180,6 @@ class TransactionListenerService {
   }
 
   /**
-   * Update wallet balance after new transaction
-   */
-  async updateWalletBalance(walletId) {
-    try {
-      const wallet = await Wallet.findById(walletId);
-      if (!wallet) {
-        logger.error(`Wallet not found: ${walletId}`);
-        return;
-      }
-
-      // Get live balance from blockchain
-      const balanceInfo = await bitcoinWalletService.getWalletBalance(wallet.address);
-      
-      // Update wallet balance in database
-      await wallet.updateBalance(balanceInfo.balance);
-      
-      logger.info(`Updated balance for wallet ${wallet.address}: ${balanceInfo.balance} satoshis`);
-      
-      return balanceInfo;
-    } catch (error) {
-      logger.error(`Failed to update wallet balance for ${walletId}:`, error.message);
-    }
-  }
-
-  /**
    * Process transactions for a specific wallet address
    */
   async processWalletTransactions(walletData) {
@@ -220,8 +195,6 @@ class TransactionListenerService {
       }
 
       let newTransactionsCount = 0;
-      let updatedBalance = false;
-
       for (const tx of transactions) {
         // Check if we already have this transaction
         if (await this.transactionExists(tx.txid)) {
@@ -243,11 +216,7 @@ class TransactionListenerService {
         }
       }
 
-      // Update wallet balance if we found new transactions
-      if (updatedBalance) {
-        await this.updateWalletBalance(walletData.walletId);
-        logger.info(`Processed ${newTransactionsCount} new transactions for ${walletData.address}`);
-      }
+    
 
     } catch (error) {
       logger.error(`Error processing transactions for ${walletData.address}:`, error.message);
