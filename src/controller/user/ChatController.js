@@ -176,7 +176,7 @@ exports.sessionList = catchAsync(async (req, res) => {
     {
       $match: {
         receipients: { $elemMatch: { user: new Types.ObjectId(user._id) } },
-        // lastMessage: { $ne: null },
+        lastMessage: { $ne: null },
         ...(type && { type }),
       },
     },

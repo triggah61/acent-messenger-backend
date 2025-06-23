@@ -62,20 +62,6 @@ class SMS {
         to: formattedPhone,
       };
 
-      // if (process.env.NODE_ENV == "dev") {
-      //   console.log(
-      //     "SMS sent successfully to ",
-      //     formattedPhone,
-      //     " in dev mode"
-      //   );
-      //   return {
-      //     success: true,
-      //     messageSid: "1234567890",
-      //     to: formattedPhone,
-      //     status: "sent",
-      //     message: this.message,
-      //   };
-      // }
       // Send SMS via Twilio
       const result = await this.client.messages.create(messageOptions);
 

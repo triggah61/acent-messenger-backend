@@ -5,6 +5,7 @@ const {
   acceptRequest,
   findContact,
   checkPhoneNumbers,
+  globalSearch,
 } = require("../../../controller/user/ContactController");
 const Authenticated = require("../../../middleware/Authenticated");
 
@@ -15,6 +16,7 @@ contactRouter.group("/contact", (contact) => {
   contact.post("/invite", sendInvitation);
   contact.post("/find", findContact);
   contact.post("/checkPhoneNumbers", checkPhoneNumbers);
+  contact.post("/globalSearch", globalSearch);
   contact.post("/request/:receiverId", sendRequest);
   contact.post("/accept/:senderId", acceptRequest);
 });

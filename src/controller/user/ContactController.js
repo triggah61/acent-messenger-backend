@@ -3,7 +3,10 @@ const AppError = require("../../exception/AppError");
 const catchAsync = require("../../exception/catchAsync");
 const User = require("../../model/User");
 const SimpleValidator = require("../../validator/simpleValidator");
-const { createPhoneMatchingPipeline, isValidPhoneNumber } = require("../../utils/phoneNumberUtils");
+const {
+  createPhoneMatchingPipeline,
+  isValidPhoneNumber,
+} = require("../../utils/phoneNumberUtils");
 
 exports.sendInvitation = catchAsync(async (req, res) => {
   const { user } = req;
@@ -24,18 +27,18 @@ exports.sendInvitation = catchAsync(async (req, res) => {
         `You have been invited to join the ${process.env.APP_NAME} app. Please download the app from the link below: ${process.env.APP_URL}`
       )
       .send();
-    
-    console.log('Invitation SMS sent successfully:', smsResult);
-    
+
+    console.log("Invitation SMS sent successfully:", smsResult);
+
     return res.status(200).json({
       message: "Invitation SMS sent to the user",
       smsResult: {
         messageSid: smsResult.messageSid,
-        status: smsResult.status
-      }
+        status: smsResult.status,
+      },
     });
   } catch (error) {
-    console.error('Failed to send invitation SMS:', error.message);
+    console.error("Failed to send invitation SMS:", error.message);
     throw new AppError(`Failed to send invitation SMS: ${error.message}`, 500);
   }
 });
@@ -50,7 +53,7 @@ exports.findContact = catchAsync(async (req, res) => {
   // Use the phone matching pipeline for a single phone number
   const phoneToSearch = dialCode ? `${dialCode}${phone}` : phone;
   const matchingPipeline = createPhoneMatchingPipeline([phoneToSearch]);
-  
+
   if (matchingPipeline.length === 0) {
     throw new AppError("Invalid phone number format", 400);
   }
@@ -60,8 +63,8 @@ exports.findContact = catchAsync(async (req, res) => {
     // First match users with activated status
     {
       $match: {
-        status: "activated"
-      }
+        status: "activated",
+      },
     },
     // Apply phone matching pipeline
     ...matchingPipeline,
@@ -74,9 +77,9 @@ exports.findContact = catchAsync(async (req, res) => {
         lastName: 1,
         photo: 1,
         username: 1,
-        searchedPhone: 1  // Include the searched phone number
-      }
-    }
+        searchedPhone: 1, // Include the searched phone number
+      },
+    },
   ];
 
   let contacts = await User.aggregate(aggregationPipeline);
@@ -99,15 +102,17 @@ exports.checkPhoneNumbers = catchAsync(async (req, res) => {
   });
 
   // Filter out invalid phone numbers
-  const validPhoneNumbers = phoneNumbers.filter(phone => isValidPhoneNumber(phone));
-  
+  const validPhoneNumbers = phoneNumbers.filter((phone) =>
+    isValidPhoneNumber(phone)
+  );
+
   if (validPhoneNumbers.length === 0) {
     return res.status(200).json([]);
   }
 
   // Use the phone matching pipeline for robust phone number matching
   const matchingPipeline = createPhoneMatchingPipeline(validPhoneNumbers);
-  
+
   // If no valid phone numbers provided, return empty array
   if (matchingPipeline.length === 0) {
     return res.status(200).json([]);
@@ -118,8 +123,8 @@ exports.checkPhoneNumbers = catchAsync(async (req, res) => {
     // First match users with activated status
     {
       $match: {
-        status: "activated"
-      }
+        status: "activated",
+      },
     },
     // Apply phone matching pipeline
     ...matchingPipeline,
@@ -132,14 +137,13 @@ exports.checkPhoneNumbers = catchAsync(async (req, res) => {
         dialCode: 1,
         photo: 1,
         username: 1,
-        searchedPhone: 1  // Include the searched phone number
-      }
-    }
+        searchedPhone: 1, // Include the searched phone number
+      },
+    },
   ];
 
   const existingUsers = await User.aggregate(aggregationPipeline);
 
-  
   // Update user's contacts with found user IDs
   if (existingUsers.length > 0) {
     let ids = existingUsers.map((foundUser) => foundUser._id);
@@ -147,6 +151,43 @@ exports.checkPhoneNumbers = catchAsync(async (req, res) => {
   }
 
   res.status(200).json(existingUsers);
+});
+
+exports.globalSearch = catchAsync(async (req, res) => {
+  const { user } = req;
+  const { search, excepts } = req.body;
+  const users = await User.aggregate([
+    {
+      $match: {
+        status: "activated",
+        _id: { $ne: user._id },
+        ...(excepts && {
+          _id: { $nin: excepts },
+        }),
+        ...(search && {
+          $or: [
+            { firstName: { $regex: search, $options: "i" } },
+            { lastName: { $regex: search, $options: "i" } },
+            { username: { $regex: search, $options: "i" } },
+            { phone: { $regex: search, $options: "i" } },
+          ],
+        }),
+      },
+    },
+
+    {
+      $project: {
+        _id: 1,
+        firstName: 1,
+        lastName: 1,
+        username: 1,
+        phone: 1,
+        dialCode: 1,
+        photo: 1,
+      },
+    },
+  ]);
+  return res.status(200).json(users);
 });
 
 exports.sendRequest = catchAsync(async (req, res) => {
@@ -208,8 +249,6 @@ exports.getContacts = catchAsync(async (req, res) => {
   let { page = 1, limit = 10, status = "active", search = "" } = req.query;
   page = parseInt(page);
   limit = parseInt(limit);
-
-
 
   let aggregatedQuery = User.aggregate([
     {

@@ -35,6 +35,7 @@ exports.info = catchAsync(async (req, res) => {
     _id: user._id,
     firstName: user.firstName,
     lastName: user.lastName,
+    username: user.username,
     photo: user.photo,
     phone: user.phone,
     dialCode: user.dialCode,
@@ -71,7 +72,7 @@ exports.updateProfile = catchAsync(async (req, res) => {
     firstName: "required",
   });
 
-  const { firstName, lastName, email, phone, gender, dob } = req.body;
+  const { firstName, lastName, username, email, phone, gender, dob } = req.body;
 
   console.log(req.body);
 
@@ -100,6 +101,16 @@ exports.updateProfile = catchAsync(async (req, res) => {
   if (dob) {
     user.dob = new Date(dob);
   }
+  if (username) {
+    const existingUser = await User.findOne({
+      username,
+      _id: { $ne: user._id },
+    });
+    if (existingUser) {
+      throw new AppError("Username already exists", 400);
+    }
+    user.username = username;
+  }
 
   // 4. Save the updated user
   await user.save();
@@ -115,6 +126,7 @@ exports.updateProfile = catchAsync(async (req, res) => {
         id: user._id,
         firstName: user.firstName,
         lastName: user.lastName,
+        username: user.username,
         email: user.email,
         photo: user.photo,
         role: user.roleType,

@@ -60,13 +60,21 @@ exports.login = catchAsync(async (req, res) => {
 
   if (user && user.status == "blocked") {
     throw new AppError("User is blocked", 400);
+  } else if (dialCode !== user?.dialCode) {
+    throw new AppError("Invalid dial code", 400);
   }
 
-  let otp = await createOtp(user?._id ?? null, "USER_LOGIN", "phone", phone, {
-    // userId: user._id,
-    phone: phone,
-    dialCode: dialCode,
-  });
+  let otp = await createOtp(
+    user?._id ?? null,
+    "USER_LOGIN",
+    "phone",
+    `${dialCode}${phone}`,
+    {
+      // userId: user._id,
+      phone: phone,
+      dialCode: dialCode,
+    }
+  );
 
   return res.status(200).json({
     status: "otp_required",

@@ -1,6 +1,7 @@
 const { v4 } = require("uuid");
 const SMS = require("../config/sms");
 const OtpVerification = require("../model/OtpVerification");
+const AppError = require("../exception/AppError");
 
 exports.createOtp = async (userId, criteria, via, phone, data = {}) => {
   let traceId = v4();
@@ -21,9 +22,10 @@ exports.createOtp = async (userId, criteria, via, phone, data = {}) => {
   if (via == "phone" && process.env.NODE_ENV !== "dev") {
     try {
       let smsResult = await new SMS(phone).text(`Your OTP is ${code}`).send();
-      console.log('OTP SMS sent successfully:', smsResult);
+      console.log("OTP SMS sent successfully:", smsResult);
     } catch (error) {
-      console.error('Failed to send OTP SMS:', error.message);
+      throw new AppError(error.message);
+      console.error("Failed to send OTP SMS:", error.message);
       // Don't throw error here to allow OTP creation to proceed
       // The user can still be notified about SMS failure separately
     }
@@ -55,10 +57,12 @@ exports.resendOtp = async (traceId) => {
 
   if (via == "phone" && process.env.NODE_ENV !== "dev") {
     try {
-      let smsResult = await new SMS(phoneWithDialCode).text(`Your OTP is ${code}`).send();
-      console.log('Resend OTP SMS sent successfully:', smsResult);
+      let smsResult = await new SMS(phoneWithDialCode)
+        .text(`Your OTP is ${code}`)
+        .send();
+      console.log("Resend OTP SMS sent successfully:", smsResult);
     } catch (error) {
-      console.error('Failed to resend OTP SMS:', error.message);
+      console.error("Failed to resend OTP SMS:", error.message);
       // Don't throw error here to allow OTP resend to proceed
     }
   }
