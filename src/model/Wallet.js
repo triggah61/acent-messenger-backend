@@ -132,13 +132,6 @@ walletSchema.methods.encryptPrivateKey = function (privateKey, walletEncryptionK
 
 walletSchema.methods.decryptPrivateKey = function (walletEncryptionKey) {
   try {
-    console.log("=== DECRYPTION DEBUG ===");
-    console.log("walletEncryptionKey provided:", !!walletEncryptionKey);
-    console.log("walletEncryptionKey length:", walletEncryptionKey ? walletEncryptionKey.length : 0);
-    console.log("salt:", this.salt);
-    console.log("encryptedPrivateKey format:", this.encryptedPrivateKey.substring(0, 20) + "...");
-    console.log("encryptedPrivateKey has colon:", this.encryptedPrivateKey.includes(":"));
-    
     if (!walletEncryptionKey) {
       throw new Error("No wallet encryption key provided");
     }
@@ -203,17 +196,6 @@ walletSchema.methods.decryptMnemonic = async function (password) {
 // Static methods
 walletSchema.statics.findByUserId = function (userId) {
   return this.find({ userId, status: { $ne: 'deleted' } }).sort({ createdAt: -1 });
-};
-
-walletSchema.statics.findByAddress = function (address) {
-  return this.findOne({
-    $or: [
-      { btcAddress: address },
-      { ethAddress: address },
-      { bscAddress: address },
-      { address: address } // Legacy field
-    ]
-  });
 };
 
 module.exports = mongoose.model("Wallet", walletSchema);

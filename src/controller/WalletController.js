@@ -5,6 +5,7 @@ const AppError = require("../exception/AppError");
 const { validationResult } = require("express-validator");
 const SimpleValidator = require("../validator/simpleValidator");
 const catchAsync = require("../exception/catchAsync");
+const { default: mongoose } = require("mongoose");
 
 /**
  * Create a new Bitcoin wallet for the authenticated user
@@ -173,7 +174,7 @@ exports.getTransactionHistory = async (req, res, next) => {
 
     // Build query
     const query = {
-      userId: userId,
+      userId: new mongoose.Types.ObjectId(userId),
     };
 
     if (type) query.type = type;
@@ -592,7 +593,7 @@ exports.triggerTransactionListener = async (req, res, next) => {
     // Import the transaction listener service
     const {
       TransactionListenerService,
-    } = require("../cronJob/transactionListener");
+    } = require("../cronJob/bitcoinTransactionListener");
     const listener = new TransactionListenerService();
 
     // Run the scan manually
@@ -610,14 +611,3 @@ exports.triggerTransactionListener = async (req, res, next) => {
     next(error);
   }
 };
-
-// module.exports = {
-//   createWallet,
-//   sendTransaction,
-//   getTransactionHistory,
-//   getTransactionDetails,
-//   estimateTransactionFee,
-//   getBitcoinPrice,
-//   validateAddress,
-//   getWalletStatistics,
-// };

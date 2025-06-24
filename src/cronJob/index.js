@@ -1,5 +1,5 @@
 const { transactionConfirmationJob } = require("./transactionConfirmation");
-const { transactionListenerJob } = require("./transactionListener");
+const { transactionListenerJob } = require("./bitcoinTransactionListener");
 
 // Start transaction confirmation monitor (every 1 minute)
 transactionConfirmationJob.start();

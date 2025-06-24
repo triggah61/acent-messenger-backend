@@ -1,10 +1,9 @@
-const cron = require('node-cron');
-const bitcoinWalletService = require('../services/BitcoinWalletService');
-const Wallet = require('../model/Wallet');
-const Transaction = require('../model/Transaction');
-const logger = require('../config/logger');
-const axios = require('axios');
-const { v4: uuidv4 } = require('uuid');
+const cron = require("node-cron");
+const Wallet = require("../model/Wallet");
+const Transaction = require("../model/Transaction");
+const logger = require("../config/logger");
+const axios = require("axios");
+const { v4: uuidv4 } = require("uuid");
 
 /**
  * Transaction Listener Service
@@ -13,7 +12,8 @@ const { v4: uuidv4 } = require('uuid');
  */
 class TransactionListenerService {
   constructor() {
-    this.network = process.env.BITCOIN_NETWORK === "mainnet" ? "mainnet" : "testnet";
+    this.network =
+      process.env.BITCOIN_NETWORK === "mainnet" ? "mainnet" : "testnet";
     this.networkPath = this.network === "mainnet" ? "" : "testnet/";
     this.lastCheckedBlock = null;
     this.isRunning = false;
@@ -30,7 +30,7 @@ class TransactionListenerService {
       );
       return response.data;
     } catch (error) {
-      logger.error('Failed to get latest block height:', error.message);
+      logger.error("Failed to get latest block height:", error.message);
       throw error;
     }
   }
@@ -40,18 +40,18 @@ class TransactionListenerService {
    */
   async getAllWalletAddresses() {
     try {
-      const wallets = await Wallet.find({ 
-        status: 'active',
-        network: this.network 
-      }).select('address userId');
-      
-      return wallets.map(wallet => ({
-        address: wallet.btcAddress,
+      const wallets = await Wallet.find({
+        status: "active",
+        network: this.network,
+      }).select("btcAddress userId");
+
+      return wallets.map((wallet) => ({
+        btcAddress: wallet.btcAddress,
         userId: wallet.userId,
-        walletId: wallet._id
+        walletId: wallet._id,
       }));
     } catch (error) {
-      logger.error('Failed to get wallet addresses:', error.message);
+      logger.error("Failed to get wallet addresses:", error.message);
       throw error;
     }
   }
@@ -62,7 +62,7 @@ class TransactionListenerService {
   async getAddressTransactions(address, lastTxId = null) {
     try {
       let url = `https://blockstream.info/${this.networkPath}api/address/${address}/txs`;
-      
+
       // If we have a last transaction ID, get only newer transactions
       if (lastTxId) {
         url += `?after_txid=${lastTxId}`;
@@ -71,7 +71,10 @@ class TransactionListenerService {
       const response = await axios.get(url, { timeout: 15000 });
       return response.data;
     } catch (error) {
-      logger.error(`Failed to get transactions for address ${address}:`, error.message);
+      logger.error(
+        `Failed to get transactions for address ${address}:`,
+        error.message
+      );
       return [];
     }
   }
@@ -84,7 +87,7 @@ class TransactionListenerService {
       const existingTx = await Transaction.findOne({ txHash });
       return !!existingTx;
     } catch (error) {
-      logger.error('Error checking transaction existence:', error.message);
+      logger.error("Error checking transaction existence:", error.message);
       return false;
     }
   }
@@ -102,14 +105,14 @@ class TransactionListenerService {
         incomingOutputs.push({
           vout: index,
           value: output.value,
-          address: walletAddress
+          address: walletAddress,
         });
         totalIncoming += output.value;
       }
     });
 
     // Check if this is an outgoing transaction from our wallet
-    const isOutgoing = tx.vin.some(input => {
+    const isOutgoing = tx.vin.some((input) => {
       // This would require checking if input addresses belong to our wallet
       // For now, we'll focus on incoming transactions
       return false;
@@ -120,12 +123,18 @@ class TransactionListenerService {
       isOutgoing,
       incomingAmount: totalIncoming,
       incomingOutputs,
-      fromAddresses: tx.vin.map(input => input.prevout?.scriptpubkey_address).filter(Boolean),
+      fromAddresses: tx.vin
+        .map((input) => input.prevout?.scriptpubkey_address)
+        .filter(Boolean),
       fee: tx.fee || 0,
       blockHeight: tx.status?.block_height,
       blockHash: tx.status?.block_hash,
       confirmed: tx.status?.confirmed || false,
-      confirmations: tx.status?.confirmed ? (tx.status.block_height ? 1 : 0) : 0
+      confirmations: tx.status?.confirmed
+        ? tx.status.block_height
+          ? 1
+          : 0
+        : 0,
     };
   }
 
@@ -137,44 +146,53 @@ class TransactionListenerService {
       const transaction = new Transaction({
         internalId: uuidv4(),
         txHash: tx.txid,
-        type: analysis.isIncoming ? 'deposit' : 'withdrawal',
+        type: analysis.isIncoming ? "deposit" : "withdrawal",
         userId: walletData.userId,
-        fromAddress: analysis.fromAddresses[0] || 'external',
+        fromAddress: analysis.fromAddresses[0] || "external",
         toAddress: walletData.btcAddress,
         amount: analysis.incomingAmount,
         fee: analysis.fee,
         adminFee: 0, // No admin fee for incoming transactions
         netAmount: analysis.incomingAmount,
-        status: analysis.confirmed ? 'confirmed' : 'processing',
+        status: analysis.confirmed ? "confirmed" : "processing",
         confirmations: analysis.confirmations,
         blockNumber: analysis.blockHeight,
         blockHash: analysis.blockHash,
         network: this.network,
-        priority: 'medium',
-        description: 'Incoming transaction detected by listener',
-        tags: ['auto-detected', 'incoming'],
-        inputs: tx.vin.map(input => ({
+        priority: "medium",
+        description: "Incoming transaction detected by listener",
+        tags: ["auto-detected", "incoming"],
+        inputs: tx.vin.map((input) => ({
           txid: input.txid,
           vout: input.vout,
-          value: input.prevout?.value || 0
+          value: input.prevout?.value || 0,
         })),
         outputs: analysis.incomingOutputs,
         submittedAt: new Date(tx.status?.block_time * 1000) || new Date(),
-        processedAt: analysis.confirmed ? new Date(tx.status?.block_time * 1000) : null,
-        confirmedAt: analysis.confirmed ? new Date(tx.status?.block_time * 1000) : null,
+        processedAt: analysis.confirmed
+          ? new Date(tx.status?.block_time * 1000)
+          : null,
+        confirmedAt: analysis.confirmed
+          ? new Date(tx.status?.block_time * 1000)
+          : null,
         metadata: {
-          detectedBy: 'transaction-listener',
+          detectedBy: "transaction-listener",
           detectedAt: new Date(),
-          rawTransaction: tx
-        }
+          rawTransaction: tx,
+        },
       });
 
       await transaction.save();
-      logger.info(`Created transaction record for ${tx.txid}, amount: ${analysis.incomingAmount} satoshis`);
-      
+      logger.info(
+        `Created transaction record for ${tx.txid}, amount: ${analysis.incomingAmount} satoshis`
+      );
+
       return transaction;
     } catch (error) {
-      logger.error(`Failed to create transaction record for ${tx.txid}:`, error.message);
+      logger.error(
+        `Failed to create transaction record for ${tx.txid}:`,
+        error.message
+      );
       throw error;
     }
   }
@@ -184,13 +202,15 @@ class TransactionListenerService {
    */
   async processWalletTransactions(walletData) {
     try {
-      logger.info(`Checking transactions for wallet: ${walletData.address}`);
+      logger.info(`Checking transactions for wallet: ${walletData.btcAddress}`);
 
       // Get recent transactions for this address
-      const transactions = await this.getAddressTransactions(walletData.address);
-      
+      const transactions = await this.getAddressTransactions(
+        walletData.btcAddress
+      );
+
       if (transactions.length === 0) {
-        logger.debug(`No transactions found for ${walletData.address}`);
+        logger.debug(`No transactions found for ${walletData.btcAddress}`);
         return;
       }
 
@@ -203,23 +223,28 @@ class TransactionListenerService {
         }
 
         // Analyze the transaction
-        const analysis = this.analyzeTransaction(tx, walletData.address, walletData.userId);
+        const analysis = this.analyzeTransaction(
+          tx,
+          walletData.btcAddress,
+          walletData.userId
+        );
 
         // Only process incoming transactions
         if (analysis.isIncoming && analysis.incomingAmount > 0) {
-          logger.info(`New incoming transaction detected: ${tx.txid}, amount: ${analysis.incomingAmount} satoshis`);
+          logger.info(
+            `New incoming transaction detected: ${tx.txid}, amount: ${analysis.incomingAmount} satoshis`
+          );
 
           // Create transaction record
           await this.createTransactionRecord(tx, analysis, walletData);
           newTransactionsCount++;
-          updatedBalance = true;
         }
       }
-
-    
-
     } catch (error) {
-      logger.error(`Error processing transactions for ${walletData.address}:`, error.message);
+      logger.error(
+        `Error processing transactions for ${walletData.btcAddress}:`,
+        error.message
+      );
     }
   }
 
@@ -228,12 +253,14 @@ class TransactionListenerService {
    */
   async scanForNewTransactions() {
     if (this.isRunning) {
-      logger.warn('Transaction listener is already running, skipping this cycle');
+      logger.warn(
+        "Transaction listener is already running, skipping this cycle"
+      );
       return;
     }
 
     this.isRunning = true;
-    logger.info('Starting transaction listener scan...');
+    logger.info("Starting transaction listener scan...");
 
     try {
       // Get current block height
@@ -241,7 +268,7 @@ class TransactionListenerService {
       logger.info(`Current block height: ${currentBlock}`);
 
       if (this.lastCheckedBlock && currentBlock <= this.lastCheckedBlock) {
-        logger.info('No new blocks since last check');
+        logger.info("No new blocks since last check");
         this.isRunning = false;
         return;
       }
@@ -251,7 +278,7 @@ class TransactionListenerService {
       logger.info(`Monitoring ${wallets.length} wallet addresses`);
 
       if (wallets.length === 0) {
-        logger.info('No active wallets to monitor');
+        logger.info("No active wallets to monitor");
         this.isRunning = false;
         return;
       }
@@ -261,21 +288,25 @@ class TransactionListenerService {
       for (const walletData of wallets) {
         try {
           await this.processWalletTransactions(walletData);
-          
+
           // Add small delay between requests to be respectful to the API
-          await new Promise(resolve => setTimeout(resolve, 500));
+          await new Promise((resolve) => setTimeout(resolve, 500));
         } catch (error) {
-          logger.error(`Error processing wallet ${walletData.address}:`, error.message);
+          logger.error(
+            `Error processing wallet ${walletData.btcAddress}:`,
+            error.message
+          );
           continue; // Continue with next wallet even if one fails
         }
       }
 
       // Update last checked block
       this.lastCheckedBlock = currentBlock;
-      logger.info(`Transaction listener scan completed. Last checked block: ${currentBlock}`);
-
+      logger.info(
+        `Transaction listener scan completed. Last checked block: ${currentBlock}`
+      );
     } catch (error) {
-      logger.error('Error in transaction listener scan:', error);
+      logger.error("Error in transaction listener scan:", error);
     } finally {
       this.isRunning = false;
     }
@@ -292,19 +323,23 @@ const getAllWalletAddresses = () => transactionListener.getAllWalletAddresses();
  * Transaction Listener Cron Job
  * Runs every 5 minutes to check for new incoming transactions
  */
-exports.transactionListenerJob = cron.schedule('*/5 * * * *', async () => {
-  logger.info('Starting transaction listener job...');
-  
-  try {
-    await transactionListener.scanForNewTransactions();
-    logger.info('Transaction listener job completed successfully');
-  } catch (error) {
-    logger.error('Error in transaction listener job:', error);
+exports.transactionListenerJob = cron.schedule(
+  "*/1 * * * *",
+  async () => {
+    logger.info("Starting transaction listener job...");
+
+    try {
+      await transactionListener.scanForNewTransactions();
+      logger.info("Transaction listener job completed successfully");
+    } catch (error) {
+      logger.error("Error in transaction listener job:", error);
+    }
+  },
+  {
+    scheduled: true,
+    timezone: "UTC",
   }
-}, {
-  scheduled: true,
-  timezone: 'UTC'
-});
+);
 
 // Export the service for manual testing
-exports.TransactionListenerService = TransactionListenerService; 
+exports.TransactionListenerService = TransactionListenerService;
