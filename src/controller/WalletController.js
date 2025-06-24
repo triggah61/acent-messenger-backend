@@ -163,7 +163,7 @@ exports.sendTransaction = catchAsync(async (req, res) => {
 exports.getTransactionHistory = async (req, res, next) => {
   try {
     const { walletId } = req.params;
-    const { page = 1, limit = 10, type, status } = req.query;
+    const { page = 1, limit = 10, type, status, currency } = req.query;
     const userId = req.user._id;
 
     // Verify wallet belongs to user
@@ -179,7 +179,7 @@ exports.getTransactionHistory = async (req, res, next) => {
 
     if (type) query.type = type;
     if (status) query.status = status;
-
+    if (currency) query.currency = currency;
     const options = {
       page: parseInt(page),
       limit: parseInt(limit),

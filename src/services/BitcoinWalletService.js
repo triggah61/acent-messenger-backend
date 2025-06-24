@@ -211,11 +211,6 @@ class MultiChainWalletService {
           this.network === bitcoin.networks.bitcoin ? "mainnet" : "testnet",
         label,
         status: "active",
-        balances: {
-          btc: 0,
-          eth: 0,
-          bsc: 0,
-        },
       });
 
       let walletEncryptionKey = process.env.WALLET_ENCRYPTION_KEY;
@@ -282,38 +277,152 @@ class MultiChainWalletService {
   }
 
   /**
-   * Get wallet balance from blockchain using blockchain explorer API
+   * Get wallet balance from blockchain using appropriate API for each chain
    */
-  async getWalletBalance(address) {
+  async getWalletBalance(address, currency = 'btc') {
     try {
-      console.log("=== BALANCE CHECK ===");
+      console.log(`=== ${currency.toUpperCase()} BALANCE CHECK ===`);
       console.log("Fetching balance for address:", address);
-      console.log("Using blockchain explorer API...");
+      
+      switch (currency.toLowerCase()) {
+        case 'btc':
+          return this.getBitcoinBalance(address);
+        case 'eth':
+          return this.getEthereumBalance(address);
+        case 'bnb':
+        case 'bsc':
+          return this.getBSCBalance(address);
+        default:
+          throw new AppError(`Unsupported currency: ${currency}`, 400);
+      }
+    } catch (error) {
+      console.error(`${currency.toUpperCase()} Balance API Error:`, error.message);
+      throw new AppError(`Failed to get wallet balance: ${error.message}`, 500);
+    }
+  }
 
-      // Use blockchain explorer API directly - most reliable for external addresses
-      const networkPath =
-        this.network === bitcoin.networks.bitcoin ? "" : "testnet/";
-      const response = await axios.get(
-        `https://blockstream.info/${networkPath}api/address/${address}`,
-        {
-          timeout: 10000,
-        }
-      );
+  /**
+   * Get Bitcoin balance using blockchain explorer API
+   */
+  async getBitcoinBalance(address) {
+    console.log("Using Bitcoin blockchain explorer API...");
+    const networkPath = this.network === bitcoin.networks.bitcoin ? "" : "testnet/";
+    const response = await axios.get(
+      `https://blockstream.info/${networkPath}api/address/${address}`,
+      // { timeout: 10000 }
+    );
+
+    return {
+      balance: response.data.chain_stats.funded_txo_sum - response.data.chain_stats.spent_txo_sum,
+      unconfirmedBalance: response.data.mempool_stats.funded_txo_sum - response.data.mempool_stats.spent_txo_sum,
+      totalReceived: response.data.chain_stats.funded_txo_sum,
+      totalSent: response.data.chain_stats.spent_txo_sum,
+      nTx: response.data.chain_stats.tx_count,
+    };
+  }
+
+  /**
+   * Get Ethereum balance using ethers.js
+   */
+  async getEthereumBalance(address) {
+    try {
+      console.log("Using Ethereum provider for balance check...");
+      const network = process.env.ETH_NETWORK === "mainnet" ? "mainnet" : "sepolia";
+      const rpcUrl = network === "mainnet" 
+        ? process.env.ETH_MAINNET_RPC_URL || "https://eth-mainnet.public.blastapi.io"
+        : process.env.ETH_TESTNET_RPC_URL || "https://eth-sepolia.public.blastapi.io";
+      
+      const provider = new ethers.providers.JsonRpcProvider(rpcUrl);
+      const balance = await provider.getBalance(address);
+      const balanceInEth = parseFloat(ethers.utils.formatEther(balance));
 
       return {
-        balance:
-          response.data.chain_stats.funded_txo_sum -
-          response.data.chain_stats.spent_txo_sum,
-        unconfirmedBalance:
-          response.data.mempool_stats.funded_txo_sum -
-          response.data.mempool_stats.spent_txo_sum,
-        totalReceived: response.data.chain_stats.funded_txo_sum,
-        totalSent: response.data.chain_stats.spent_txo_sum,
-        nTx: response.data.chain_stats.tx_count,
+        balance: balanceInEth,
+        unconfirmedBalance: 0, // ETH doesn't have pending balances like Bitcoin
+        totalReceived: balanceInEth, // Simplified - would need transaction history for accurate total
+        totalSent: 0,
+        nTx: 0,
       };
     } catch (error) {
-      console.error("Balance API Error:", error.message);
-      throw new AppError(`Failed to get wallet balance: ${error.message}`, 500);
+      throw new AppError(`Failed to get Ethereum balance: ${error.message}`, 500);
+    }
+  }
+
+  /**
+   * Get BSC balance using ethers.js
+   */
+  async getBSCBalance(address) {
+    try {
+      console.log("Using BSC provider for balance check...");
+      const network = process.env.BSC_NETWORK === "mainnet" ? "mainnet" : "testnet";
+      const rpcUrl = network === "mainnet" 
+        ? process.env.BSC_MAINNET_RPC_URL || "https://bsc-dataseed1.binance.org/"
+        : process.env.BSC_TESTNET_RPC_URL || "https://data-seed-prebsc-1-s1.binance.org:8545/";
+      
+      const provider = new ethers.providers.JsonRpcProvider(rpcUrl);
+      const balance = await provider.getBalance(address);
+      const balanceInBnb = parseFloat(ethers.utils.formatEther(balance));
+
+      return {
+        balance: balanceInBnb,
+        unconfirmedBalance: 0, // BSC doesn't have pending balances like Bitcoin
+        totalReceived: balanceInBnb, // Simplified - would need transaction history for accurate total
+        totalSent: 0,
+        nTx: 0,
+      };
+    } catch (error) {
+      throw new AppError(`Failed to get BSC balance: ${error.message}`, 500);
+    }
+  }
+
+  /**
+   * Update wallet balance in database - now supports all chains
+   */
+  async updateWalletBalance(walletId, currency = 'btc') {
+    try {
+      const wallet = await Wallet.findById(walletId);
+      if (!wallet) {
+        throw new AppError("Wallet not found", 404);
+      }
+
+      let address;
+      switch (currency.toLowerCase()) {
+        case 'btc':
+          address = wallet.btcAddress || wallet.address; // Fallback to legacy field
+          break;
+        case 'eth':
+          address = wallet.ethAddress;
+          break;
+        case 'bnb':
+        case 'bsc':
+          address = wallet.bscAddress;
+          break;
+        default:
+          throw new AppError("Unsupported currency", 400);
+      }
+
+      if (!address) {
+        throw new AppError(`No ${currency.toUpperCase()} address found for this wallet`, 400);
+      }
+
+      const balanceInfo = await this.getWalletBalance(address, currency);
+      
+      // Update the wallet balance in the database
+      // Note: We'll use a simple field update since the user removed the balances object
+      // You might want to add a balances field back to the Wallet model for multi-chain support
+      if (currency.toLowerCase() === 'btc') {
+        wallet.balance = balanceInfo.balance; // For backward compatibility
+      }
+      
+      wallet.lastUsed = new Date();
+      await wallet.save();
+
+      return balanceInfo;
+    } catch (error) {
+      throw new AppError(
+        `Failed to update wallet balance: ${error.message}`,
+        500
+      );
     }
   }
 
@@ -622,6 +731,7 @@ class MultiChainWalletService {
     // Create transaction record
     const transaction = new Transaction({
       internalId: uuidv4(),
+      currency: "BTC",
       type: "withdrawal",
       userId: wallet.userId,
       fromAddress: wallet.btcAddress,
@@ -1078,6 +1188,254 @@ class MultiChainWalletService {
   async getBSCPrivateKey(walletId, walletEncryptionKey) {
     // BSC uses the same derivation as Ethereum
     return this.getEthereumPrivateKey(walletId, walletEncryptionKey);
+  }
+
+  /**
+   * Send ETH transaction
+   */
+  async sendEthTransaction(
+    fromWalletId,
+    toAddress,
+    amount, // Amount in ETH
+    walletEncryptionKey,
+    gasPrice = null, // Optional custom gas price in Gwei
+    description = ""
+  ) {
+    try {
+      // Get wallet
+      const wallet = await Wallet.findById(fromWalletId);
+      if (!wallet) {
+        throw new AppError("Wallet not found", 404);
+      }
+
+      if (wallet.status !== "active") {
+        throw new AppError("Wallet is not active", 400);
+      }
+
+      if (!wallet.ethAddress) {
+        throw new AppError("No Ethereum address found for this wallet", 400);
+      }
+
+      // Get Ethereum private key
+      const ethPrivateKey = await this.getEthereumPrivateKey(fromWalletId, walletEncryptionKey);
+      
+      // Setup provider and wallet
+      const network = process.env.ETH_NETWORK === "mainnet" ? "mainnet" : "sepolia";
+      const rpcUrl = network === "mainnet" 
+        ? process.env.ETH_MAINNET_RPC_URL || "https://eth-mainnet.public.blastapi.io"
+        : process.env.ETH_TESTNET_RPC_URL || "https://eth-sepolia.public.blastapi.io";
+      
+      const provider = new ethers.providers.JsonRpcProvider(rpcUrl);
+      const ethWallet = new ethers.Wallet(ethPrivateKey, provider);
+
+      // Check balance
+      const balance = await ethWallet.getBalance();
+      const balanceInEth = parseFloat(ethers.utils.formatEther(balance));
+      
+      if (balanceInEth < amount) {
+        throw new AppError(`Insufficient ETH balance. Available: ${balanceInEth}, Required: ${amount}`, 400);
+      }
+
+      // Estimate gas
+      const gasLimit = 21000; // Standard ETH transfer
+      const currentGasPrice = gasPrice 
+        ? ethers.utils.parseUnits(gasPrice.toString(), "gwei")
+        : await provider.getGasPrice();
+      
+      const estimatedFee = gasLimit * parseFloat(ethers.utils.formatUnits(currentGasPrice, "gwei")) / 1e9;
+      
+      if (balanceInEth < (amount + estimatedFee)) {
+        throw new AppError(`Insufficient balance including gas fees. Available: ${balanceInEth}, Required: ${amount + estimatedFee}`, 400);
+      }
+
+      // Create transaction
+      const tx = {
+        to: toAddress,
+        value: ethers.utils.parseEther(amount.toString()),
+        gasLimit: gasLimit,
+        gasPrice: currentGasPrice,
+      };
+
+      // Send transaction
+      const txResponse = await ethWallet.sendTransaction(tx);
+      
+      // Create transaction record
+      const transaction = new Transaction({
+        internalId: uuidv4(),
+        txHash: txResponse.hash,
+        currency: "ETH",
+        type: "withdrawal",
+        userId: wallet.userId,
+        fromAddress: wallet.ethAddress,
+        toAddress,
+        amount: amount,
+        fee: estimatedFee,
+        adminFee: 0,
+        netAmount: amount,
+        status: "pending",
+        network: network,
+        priority: "medium",
+        description: description || "ETH transfer",
+        tags: ["eth", "transfer"],
+        submittedAt: new Date(),
+        metadata: {
+          gasPrice: ethers.utils.formatUnits(currentGasPrice, "gwei"),
+          gasLimit: gasLimit,
+          nonce: txResponse.nonce,
+        },
+      });
+
+      await transaction.save();
+
+      // Wait for confirmation
+      const receipt = await txResponse.wait();
+      
+      // Update transaction status
+      transaction.status = "confirmed";
+      transaction.confirmations = 1;
+      transaction.blockNumber = receipt.blockNumber;
+      transaction.blockHash = receipt.blockHash;
+      transaction.processedAt = new Date();
+      transaction.confirmedAt = new Date();
+      transaction.fee = parseFloat(ethers.utils.formatEther(receipt.gasUsed.mul(currentGasPrice)));
+      await transaction.save();
+
+      return {
+        transactionId: transaction._id,
+        txHash: transaction.txHash,
+        amount,
+        fee: transaction.fee,
+        status: transaction.status,
+        success: true,
+      };
+
+    } catch (error) {
+      throw new AppError(`Failed to send ETH transaction: ${error.message}`, 500);
+    }
+  }
+
+  /**
+   * Send BSC (BNB) transaction
+   */
+  async sendBscTransaction(
+    fromWalletId,
+    toAddress,
+    amount, // Amount in BNB
+    walletEncryptionKey,
+    gasPrice = null, // Optional custom gas price in Gwei
+    description = ""
+  ) {
+    try {
+      // Get wallet
+      const wallet = await Wallet.findById(fromWalletId);
+      if (!wallet) {
+        throw new AppError("Wallet not found", 404);
+      }
+
+      if (wallet.status !== "active") {
+        throw new AppError("Wallet is not active", 400);
+      }
+
+      if (!wallet.bscAddress) {
+        throw new AppError("No BSC address found for this wallet", 400);
+      }
+
+      // Get BSC private key (same as ETH)
+      const bscPrivateKey = await this.getBSCPrivateKey(fromWalletId, walletEncryptionKey);
+      
+      // Setup provider and wallet
+      const network = process.env.BSC_NETWORK === "mainnet" ? "mainnet" : "testnet";
+      const rpcUrl = network === "mainnet" 
+        ? process.env.BSC_MAINNET_RPC_URL || "https://bsc-dataseed1.binance.org/"
+        : process.env.BSC_TESTNET_RPC_URL || "https://data-seed-prebsc-1-s1.binance.org:8545/";
+      
+      const provider = new ethers.providers.JsonRpcProvider(rpcUrl);
+      const bscWallet = new ethers.Wallet(bscPrivateKey, provider);
+
+      // Check balance
+      const balance = await bscWallet.getBalance();
+      const balanceInBnb = parseFloat(ethers.utils.formatEther(balance));
+      
+      if (balanceInBnb < amount) {
+        throw new AppError(`Insufficient BNB balance. Available: ${balanceInBnb}, Required: ${amount}`, 400);
+      }
+
+      // Estimate gas (BSC has lower gas costs than ETH)
+      const gasLimit = 21000; // Standard BNB transfer
+      const currentGasPrice = gasPrice 
+        ? ethers.utils.parseUnits(gasPrice.toString(), "gwei")
+        : await provider.getGasPrice();
+      
+      const estimatedFee = gasLimit * parseFloat(ethers.utils.formatUnits(currentGasPrice, "gwei")) / 1e9;
+      
+      if (balanceInBnb < (amount + estimatedFee)) {
+        throw new AppError(`Insufficient balance including gas fees. Available: ${balanceInBnb}, Required: ${amount + estimatedFee}`, 400);
+      }
+
+      // Create transaction
+      const tx = {
+        to: toAddress,
+        value: ethers.utils.parseEther(amount.toString()),
+        gasLimit: gasLimit,
+        gasPrice: currentGasPrice,
+      };
+
+      // Send transaction
+      const txResponse = await bscWallet.sendTransaction(tx);
+      
+      // Create transaction record
+      const transaction = new Transaction({
+        internalId: uuidv4(),
+        txHash: txResponse.hash,
+        currency: "BNB",
+        type: "withdrawal",
+        userId: wallet.userId,
+        fromAddress: wallet.bscAddress,
+        toAddress,
+        amount: amount,
+        fee: estimatedFee,
+        adminFee: 0,
+        netAmount: amount,
+        status: "pending",
+        network: network,
+        priority: "medium",
+        description: description || "BNB transfer",
+        tags: ["bnb", "bsc", "transfer"],
+        submittedAt: new Date(),
+        metadata: {
+          gasPrice: ethers.utils.formatUnits(currentGasPrice, "gwei"),
+          gasLimit: gasLimit,
+          nonce: txResponse.nonce,
+        },
+      });
+
+      await transaction.save();
+
+      // Wait for confirmation
+      const receipt = await txResponse.wait();
+      
+      // Update transaction status
+      transaction.status = "confirmed";
+      transaction.confirmations = 1;
+      transaction.blockNumber = receipt.blockNumber;
+      transaction.blockHash = receipt.blockHash;
+      transaction.processedAt = new Date();
+      transaction.confirmedAt = new Date();
+      transaction.fee = parseFloat(ethers.utils.formatEther(receipt.gasUsed.mul(currentGasPrice)));
+      await transaction.save();
+
+      return {
+        transactionId: transaction._id,
+        txHash: transaction.txHash,
+        amount,
+        fee: transaction.fee,
+        status: transaction.status,
+        success: true,
+      };
+
+    } catch (error) {
+      throw new AppError(`Failed to send BSC transaction: ${error.message}`, 500);
+    }
   }
 }
 

@@ -38,8 +38,7 @@ const transactionSchema = new Schema(
     currency: {
       type: String,
       enum: ["BTC", "ETH", "BNB"],
-      required: true,
-      index: true,
+      default: "BTC",
     },
 
     // From wallet address
@@ -55,22 +54,17 @@ const transactionSchema = new Schema(
       required: true,
       index: true,
     },
-
-    // Amount in satoshis
     amount: {
       type: Number,
       required: true,
       min: 0,
     },
 
-    // Fee amount in satoshis
     fee: {
       type: Number,
       default: 0,
       min: 0,
     },
-
-    // Admin fee (platform fee) in satoshis
     adminFee: {
       type: Number,
       default: 0,

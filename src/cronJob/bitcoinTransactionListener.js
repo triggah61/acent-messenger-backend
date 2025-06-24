@@ -146,6 +146,7 @@ class TransactionListenerService {
       const transaction = new Transaction({
         internalId: uuidv4(),
         txHash: tx.txid,
+        currency: "BTC",
         type: analysis.isIncoming ? "deposit" : "withdrawal",
         userId: walletData.userId,
         fromAddress: analysis.fromAddresses[0] || "external",
@@ -160,8 +161,8 @@ class TransactionListenerService {
         blockHash: analysis.blockHash,
         network: this.network,
         priority: "medium",
-        description: "Incoming transaction detected by listener",
-        tags: ["auto-detected", "incoming"],
+        description: "Incoming BTC transaction detected by listener",
+        tags: ["auto-detected", "incoming", "btc"],
         inputs: tx.vin.map((input) => ({
           txid: input.txid,
           vout: input.vout,
@@ -176,7 +177,7 @@ class TransactionListenerService {
           ? new Date(tx.status?.block_time * 1000)
           : null,
         metadata: {
-          detectedBy: "transaction-listener",
+          detectedBy: "btc-transaction-listener",
           detectedAt: new Date(),
           rawTransaction: tx,
         },
@@ -184,13 +185,13 @@ class TransactionListenerService {
 
       await transaction.save();
       logger.info(
-        `Created transaction record for ${tx.txid}, amount: ${analysis.incomingAmount} satoshis`
+        `Created BTC transaction record for ${tx.txid}, amount: ${analysis.incomingAmount} satoshis`
       );
 
       return transaction;
     } catch (error) {
       logger.error(
-        `Failed to create transaction record for ${tx.txid}:`,
+        `Failed to create BTC transaction record for ${tx.txid}:`,
         error.message
       );
       throw error;
@@ -323,7 +324,7 @@ const getAllWalletAddresses = () => transactionListener.getAllWalletAddresses();
  * Transaction Listener Cron Job
  * Runs every 5 minutes to check for new incoming transactions
  */
-exports.transactionListenerJob = cron.schedule(
+exports.btcTransactionListenerJob = cron.schedule(
   "*/1 * * * *",
   async () => {
     logger.info("Starting transaction listener job...");
