@@ -11,6 +11,7 @@ const BscWalletService = require("../services/BscWalletService");
 const { toBtc } = require("../services/BtcWalletService");
 const BtcWalletService = require("../services/BtcWalletService");
 const { ethers } = require("ethers");
+const currencyConverter = require("../services/CurrencyConverter");
 
 /**
  * Create a new multi-chain wallet for the authenticated user
@@ -77,13 +78,11 @@ exports.walletInformation = catchAsync(async (req, res) => {
 
     // Get USD value (using a simple rate for now - in production, use real-time rates)
     let usdBalance = 0;
+    let exchangeData = await currencyConverter.getExchangeData();
     try {
-      // Get Bitcoin price from Coinbase API
-      const response = await require("axios").get(
-        "https://api.coinbase.com/v2/exchange-rates?currency=BTC"
-      );
-      const btcToUsdRate = parseFloat(response.data.data.rates.USD);
-      usdBalance = btcBalance * btcToUsdRate;
+      let btcToUsdRate = exchangeData.BTC.USD;
+      let ethToUsdRate = exchangeData.ETH.USD;
+      let bscToUsdRate = exchangeData.BNB.USD;
     } catch (error) {
       console.error("Failed to get BTC price:", error.message);
       // Fallback to a default rate if API fails
@@ -96,6 +95,10 @@ exports.walletInformation = catchAsync(async (req, res) => {
     let { balance: bscBalance } = await BscWalletService.getBalance(
       wallet.bscAddress
     );
+
+    usdBalance += await currencyConverter.convertToUsd(btcBalance, "BTC");
+    usdBalance += await currencyConverter.convertToUsd(ethBalance, "ETH");
+    usdBalance += await currencyConverter.convertToUsd(bscBalance, "BNB");
 
     // Get platform fee percentage from environment or service
     const platformFeePercentage =
@@ -119,6 +122,7 @@ exports.walletInformation = catchAsync(async (req, res) => {
         bscBalance: bscBalance,
         usdBalance: usdBalance,
         platformFeePercentage: platformFeePercentage,
+        exchangeData: exchangeData,
       },
     });
   } catch (error) {
@@ -139,6 +143,8 @@ exports.sendTransaction = catchAsync(async (req, res) => {
     amount: "required|numeric",
     priority: "required|in:low,medium,high,custom",
   });
+
+  console.log("req.body", req.body);
 
   let { currency, toAddress, amount, priority, description } = req.body;
   const userId = req.user._id;
@@ -328,7 +334,9 @@ exports.estimateTransactionFee = catchAsync(async (req, res, next) => {
 
     // Validate currency
     if (!["BTC", "ETH", "BNB"].includes(currency)) {
-      return next(new AppError("Unsupported currency. Use BTC, ETH, or BNB", 400));
+      return next(
+        new AppError("Unsupported currency. Use BTC, ETH, or BNB", 400)
+      );
     }
 
     // Verify wallet belongs to user
@@ -343,7 +351,7 @@ exports.estimateTransactionFee = catchAsync(async (req, res, next) => {
 
     if (currency === "BTC") {
       // Bitcoin fee estimation
-      
+
       // Get UTXOs to estimate input count
       const utxos = await BtcWalletService.getUTXOs(wallet.btcAddress);
       const inputCount = Math.min(utxos.length, 10); // Limit to 10 inputs for estimation
@@ -352,7 +360,11 @@ exports.estimateTransactionFee = catchAsync(async (req, res, next) => {
       // Calculate fees
       const networkFee = {
         low: BtcWalletService.calculateTransactionFee(inputCount, 2, "low"),
-        medium: BtcWalletService.calculateTransactionFee(inputCount, 2, "medium"),
+        medium: BtcWalletService.calculateTransactionFee(
+          inputCount,
+          2,
+          "medium"
+        ),
         high: BtcWalletService.calculateTransactionFee(inputCount, 2, "high"),
       };
 
@@ -389,9 +401,10 @@ exports.estimateTransactionFee = catchAsync(async (req, res, next) => {
       dustHandling = {
         dustThreshold: dustThreshold,
         platformFeeIsDust: platformFeeAmount < dustThreshold,
-        note: platformFeeAmount < dustThreshold
-          ? "Platform fee is below dust threshold - will be added to network fee for miners, but you still pay the full platform fee"
-          : "Platform fee will be sent to admin wallet",
+        note:
+          platformFeeAmount < dustThreshold
+            ? "Platform fee is below dust threshold - will be added to network fee for miners, but you still pay the full platform fee"
+            : "Platform fee will be sent to admin wallet",
       };
 
       estimatedConfirmationTime = {
@@ -399,16 +412,15 @@ exports.estimateTransactionFee = catchAsync(async (req, res, next) => {
         medium: "10-30 minutes",
         high: "5-15 minutes",
       };
-
     } else if (currency === "ETH") {
       // Ethereum fee estimation
       const platformFeeAmount = EthWalletService.calculatePlatformFee(amount);
-      
+
       // Get base network fee
       let baseFee;
       try {
         baseFee = await EthWalletService.calculateTransactionFee();
-        
+
         // If the fee is unreasonably low (less than $0.50 worth), use realistic fallback
         if (baseFee < 0.0001) {
           console.log("ETH fee too low, using fallback");
@@ -416,22 +428,29 @@ exports.estimateTransactionFee = catchAsync(async (req, res, next) => {
           const { ethers } = require("ethers");
           const gasLimit = 21000;
           const realisticGasPrice = ethers.parseUnits("30", "gwei"); // 30 Gwei baseline
-          baseFee = parseFloat(ethers.formatEther(BigInt(gasLimit) * realisticGasPrice));
+          baseFee = parseFloat(
+            ethers.formatEther(BigInt(gasLimit) * realisticGasPrice)
+          );
         }
       } catch (error) {
-        console.log("ETH fee calculation failed, using fallback:", error.message);
+        console.log(
+          "ETH fee calculation failed, using fallback:",
+          error.message
+        );
         // Fallback to realistic fees
         const { ethers } = require("ethers");
         const gasLimit = 21000;
         const fallbackGasPrice = ethers.parseUnits("30", "gwei");
-        baseFee = parseFloat(ethers.formatEther(BigInt(gasLimit) * fallbackGasPrice));
+        baseFee = parseFloat(
+          ethers.formatEther(BigInt(gasLimit) * fallbackGasPrice)
+        );
       }
 
       // Calculate priority-based fees
       const networkFee = {
-        low: baseFee * 0.7,    // 70% for low priority
-        medium: baseFee,       // Base fee for medium
-        high: baseFee * 1.5,   // 150% for high priority
+        low: baseFee * 0.7, // 70% for low priority
+        medium: baseFee, // Base fee for medium
+        high: baseFee * 1.5, // 150% for high priority
       };
 
       fees = {
@@ -459,19 +478,18 @@ exports.estimateTransactionFee = catchAsync(async (req, res, next) => {
 
       estimatedConfirmationTime = {
         low: "5-10 minutes",
-        medium: "2-5 minutes", 
+        medium: "2-5 minutes",
         high: "1-2 minutes",
       };
-
     } else if (currency === "BNB") {
       // BSC (BNB) fee estimation
       const platformFeeAmount = BscWalletService.calculatePlatformFee(amount);
-      
+
       // Get base network fee
       let baseFee;
       try {
         baseFee = await BscWalletService.calculateTransactionFee();
-        
+
         // If the fee is unreasonably low, use realistic fallback
         // Current BSC fees should be around $0.10-$0.50 (0.0003-0.0015 BNB at ~$300/BNB)
         if (baseFee < 0.0003) {
@@ -480,22 +498,29 @@ exports.estimateTransactionFee = catchAsync(async (req, res, next) => {
           const { ethers } = require("ethers");
           const gasLimit = 21000;
           const realisticGasPrice = ethers.parseUnits("15", "gwei"); // 15 Gwei baseline for BSC
-          baseFee = parseFloat(ethers.formatEther(BigInt(gasLimit) * realisticGasPrice));
+          baseFee = parseFloat(
+            ethers.formatEther(BigInt(gasLimit) * realisticGasPrice)
+          );
         }
       } catch (error) {
-        console.log("BSC fee calculation failed, using fallback:", error.message);
+        console.log(
+          "BSC fee calculation failed, using fallback:",
+          error.message
+        );
         // Fallback to realistic BSC fees
         const { ethers } = require("ethers");
         const gasLimit = 21000;
         const fallbackGasPrice = ethers.parseUnits("15", "gwei"); // Higher baseline for realistic fees
-        baseFee = parseFloat(ethers.formatEther(BigInt(gasLimit) * fallbackGasPrice));
+        baseFee = parseFloat(
+          ethers.formatEther(BigInt(gasLimit) * fallbackGasPrice)
+        );
       }
 
       // Calculate priority-based fees
       const networkFee = {
-        low: baseFee * 0.7,    // 70% for low priority
-        medium: baseFee,       // Base fee for medium
-        high: baseFee * 1.4,   // 140% for high priority
+        low: baseFee * 0.7, // 70% for low priority
+        medium: baseFee, // Base fee for medium
+        high: baseFee * 1.4, // 140% for high priority
       };
 
       fees = {
