@@ -8,6 +8,8 @@ const catchAsync = require("../exception/catchAsync");
 const { default: mongoose } = require("mongoose");
 const EthWalletService = require("../services/EthWalletService");
 const BscWalletService = require("../services/BscWalletService");
+const { toBtc } = require("../services/BtcWalletService");
+const BtcWalletService = require("../services/BtcWalletService");
 
 /**
  * Create a new multi-chain wallet for the authenticated user
@@ -316,33 +318,73 @@ exports.getTransactionDetails = catchAsync(async (req, res) => {
 /**
  * Estimate transaction fee (multi-chain support)
  */
-exports.estimateTransactionFee = catchAsync(async (req, res) => {
-  const { currency = "BTC", amount, priority = "medium" } = req.query;
-
+exports.estimateTransactionFee = catchAsync(async (req, res, next) => {
   try {
-    const service = multiChainWalletService.getService(currency);
-    let fee;
+    const { amount } = req.body;
+    const userId = req.user._id;
 
-    if (currency === "BTC") {
-      // For Bitcoin, estimate based on UTXOs (simplified estimation)
-      fee = service.calculateTransactionFee(2, 2, priority); // Estimate with 2 inputs, 2 outputs
-    } else if (currency === "ETH") {
-      fee = await service.calculateTransactionFee();
-    } else if (currency === "BNB") {
-      fee = await service.calculateTransactionFee();
+    console.log("amount", amount);
+
+    // Verify wallet belongs to user
+    const wallet = await Wallet.findOne({
+      userId,
+    });
+    if (!wallet) {
+      return next(new AppError("Wallet not found or access denied", 404));
     }
+
+    // Get UTXOs to estimate input count
+    const utxos = await BtcWalletService.getUTXOs(wallet.btcAddress);
+    const inputCount = Math.min(utxos.length, 10); // Limit to 10 inputs for estimation
+    console.log("inputCount", inputCount);
+
+    // Calculate fees
+    const networkFee = {
+      low: BtcWalletService.calculateTransactionFee(inputCount, 2, "low"),
+      medium: BtcWalletService.calculateTransactionFee(inputCount, 2, "medium"),
+      high: BtcWalletService.calculateTransactionFee(inputCount, 2, "high"),
+    };
+
+    const platformFeeAmount = BtcWalletService.calculatePlatformFee(amount);
+    const dustThreshold = 546; // Bitcoin dust threshold
+
+    let fees = {
+      low: {
+        network: toBtc(networkFee.low),
+        platform: toBtc(platformFeeAmount),
+      },
+      medium: {
+        network: toBtc(networkFee.medium),
+        platform: toBtc(platformFeeAmount),
+      },
+      high: {
+        network: toBtc(networkFee.high),
+        platform: toBtc(platformFeeAmount),
+      },
+    };
 
     res.status(200).json({
       success: true,
+      message: "Transaction fees estimated successfully",
       data: {
-        currency,
-        estimatedFee: fee,
-        priority,
-        note: "This is an estimated fee. Actual fee may vary based on network conditions.",
+        fees,
+        dustHandling: {
+          dustThreshold: dustThreshold,
+          platformFeeIsDust: platformFeeAmount < dustThreshold,
+          note:
+            platformFeeAmount < dustThreshold
+              ? "Platform fee is below dust threshold - will be added to network fee for miners, but you still pay the full platform fee"
+              : "Platform fee will be sent to admin wallet",
+        },
+        estimatedConfirmationTime: {
+          low: "60-120 minutes",
+          medium: "10-30 minutes",
+          high: "5-15 minutes",
+        },
       },
     });
   } catch (error) {
-    throw new AppError(`Failed to estimate fee: ${error.message}`, 500);
+    next(error);
   }
 });
 
