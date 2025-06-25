@@ -562,3 +562,4 @@ class BtcWalletService {
 }
 
 module.exports = new BtcWalletService();
+module.exports.toBtc = (amount) => amount / 100000000;

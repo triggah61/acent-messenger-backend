@@ -10,6 +10,7 @@ const EthWalletService = require("../services/EthWalletService");
 const BscWalletService = require("../services/BscWalletService");
 const { toBtc } = require("../services/BtcWalletService");
 const BtcWalletService = require("../services/BtcWalletService");
+const { ethers } = require("ethers");
 
 /**
  * Create a new multi-chain wallet for the authenticated user
@@ -320,10 +321,15 @@ exports.getTransactionDetails = catchAsync(async (req, res) => {
  */
 exports.estimateTransactionFee = catchAsync(async (req, res, next) => {
   try {
-    const { amount } = req.body;
+    const { amount, currency } = req.body;
     const userId = req.user._id;
 
-    console.log("amount", amount);
+    console.log("amount", amount, "currency", currency);
+
+    // Validate currency
+    if (!["BTC", "ETH", "BNB"].includes(currency)) {
+      return next(new AppError("Unsupported currency. Use BTC, ETH, or BNB", 400));
+    }
 
     // Verify wallet belongs to user
     const wallet = await Wallet.findOne({
@@ -333,54 +339,209 @@ exports.estimateTransactionFee = catchAsync(async (req, res, next) => {
       return next(new AppError("Wallet not found or access denied", 404));
     }
 
-    // Get UTXOs to estimate input count
-    const utxos = await BtcWalletService.getUTXOs(wallet.btcAddress);
-    const inputCount = Math.min(utxos.length, 10); // Limit to 10 inputs for estimation
-    console.log("inputCount", inputCount);
+    let fees, dustHandling, estimatedConfirmationTime;
 
-    // Calculate fees
-    const networkFee = {
-      low: BtcWalletService.calculateTransactionFee(inputCount, 2, "low"),
-      medium: BtcWalletService.calculateTransactionFee(inputCount, 2, "medium"),
-      high: BtcWalletService.calculateTransactionFee(inputCount, 2, "high"),
-    };
+    if (currency === "BTC") {
+      // Bitcoin fee estimation
+      
+      // Get UTXOs to estimate input count
+      const utxos = await BtcWalletService.getUTXOs(wallet.btcAddress);
+      const inputCount = Math.min(utxos.length, 10); // Limit to 10 inputs for estimation
+      console.log("inputCount", inputCount);
 
-    const platformFeeAmount = BtcWalletService.calculatePlatformFee(amount);
-    const dustThreshold = 546; // Bitcoin dust threshold
+      // Calculate fees
+      const networkFee = {
+        low: BtcWalletService.calculateTransactionFee(inputCount, 2, "low"),
+        medium: BtcWalletService.calculateTransactionFee(inputCount, 2, "medium"),
+        high: BtcWalletService.calculateTransactionFee(inputCount, 2, "high"),
+      };
 
-    let fees = {
-      low: {
-        network: toBtc(networkFee.low),
-        platform: toBtc(platformFeeAmount),
-      },
-      medium: {
-        network: toBtc(networkFee.medium),
-        platform: toBtc(platformFeeAmount),
-      },
-      high: {
-        network: toBtc(networkFee.high),
-        platform: toBtc(platformFeeAmount),
-      },
-    };
+      const platformFeeAmount = BtcWalletService.calculatePlatformFee(amount);
+      const dustThreshold = 546; // Bitcoin dust threshold
+
+      fees = {
+        low: {
+          network: toBtc(networkFee.low),
+          platform: toBtc(platformFeeAmount),
+          total: toBtc(networkFee.low + platformFeeAmount),
+          networkSatoshis: networkFee.low,
+          platformSatoshis: platformFeeAmount,
+          totalSatoshis: networkFee.low + platformFeeAmount,
+        },
+        medium: {
+          network: toBtc(networkFee.medium),
+          platform: toBtc(platformFeeAmount),
+          total: toBtc(networkFee.medium + platformFeeAmount),
+          networkSatoshis: networkFee.medium,
+          platformSatoshis: platformFeeAmount,
+          totalSatoshis: networkFee.medium + platformFeeAmount,
+        },
+        high: {
+          network: toBtc(networkFee.high),
+          platform: toBtc(platformFeeAmount),
+          total: toBtc(networkFee.high + platformFeeAmount),
+          networkSatoshis: networkFee.high,
+          platformSatoshis: platformFeeAmount,
+          totalSatoshis: networkFee.high + platformFeeAmount,
+        },
+      };
+
+      dustHandling = {
+        dustThreshold: dustThreshold,
+        platformFeeIsDust: platformFeeAmount < dustThreshold,
+        note: platformFeeAmount < dustThreshold
+          ? "Platform fee is below dust threshold - will be added to network fee for miners, but you still pay the full platform fee"
+          : "Platform fee will be sent to admin wallet",
+      };
+
+      estimatedConfirmationTime = {
+        low: "60-120 minutes",
+        medium: "10-30 minutes",
+        high: "5-15 minutes",
+      };
+
+    } else if (currency === "ETH") {
+      // Ethereum fee estimation
+      const platformFeeAmount = EthWalletService.calculatePlatformFee(amount);
+      
+      // Get base network fee
+      let baseFee;
+      try {
+        baseFee = await EthWalletService.calculateTransactionFee();
+        
+        // If the fee is unreasonably low (less than $0.50 worth), use realistic fallback
+        if (baseFee < 0.0001) {
+          console.log("ETH fee too low, using fallback");
+          // Use realistic ETH gas prices: 20-50 Gwei for current mainnet
+          const { ethers } = require("ethers");
+          const gasLimit = 21000;
+          const realisticGasPrice = ethers.parseUnits("30", "gwei"); // 30 Gwei baseline
+          baseFee = parseFloat(ethers.formatEther(BigInt(gasLimit) * realisticGasPrice));
+        }
+      } catch (error) {
+        console.log("ETH fee calculation failed, using fallback:", error.message);
+        // Fallback to realistic fees
+        const { ethers } = require("ethers");
+        const gasLimit = 21000;
+        const fallbackGasPrice = ethers.parseUnits("30", "gwei");
+        baseFee = parseFloat(ethers.formatEther(BigInt(gasLimit) * fallbackGasPrice));
+      }
+
+      // Calculate priority-based fees
+      const networkFee = {
+        low: baseFee * 0.7,    // 70% for low priority
+        medium: baseFee,       // Base fee for medium
+        high: baseFee * 1.5,   // 150% for high priority
+      };
+
+      fees = {
+        low: {
+          network: networkFee.low,
+          platform: platformFeeAmount,
+          total: networkFee.low + platformFeeAmount,
+        },
+        medium: {
+          network: networkFee.medium,
+          platform: platformFeeAmount,
+          total: networkFee.medium + platformFeeAmount,
+        },
+        high: {
+          network: networkFee.high,
+          platform: platformFeeAmount,
+          total: networkFee.high + platformFeeAmount,
+        },
+      };
+
+      dustHandling = {
+        minimumTransactionAmount: 0.001, // Minimum ETH transaction
+        note: "Platform fee will be sent in a separate transaction to admin wallet",
+      };
+
+      estimatedConfirmationTime = {
+        low: "5-10 minutes",
+        medium: "2-5 minutes", 
+        high: "1-2 minutes",
+      };
+
+    } else if (currency === "BNB") {
+      // BSC (BNB) fee estimation
+      const platformFeeAmount = BscWalletService.calculatePlatformFee(amount);
+      
+      // Get base network fee
+      let baseFee;
+      try {
+        baseFee = await BscWalletService.calculateTransactionFee();
+        
+        // If the fee is unreasonably high or low, use realistic fallback
+        if (baseFee < 0.00001 || baseFee > 0.01) {
+          console.log("BSC fee unrealistic, using fallback");
+          // Use realistic BSC gas prices: 3-10 Gwei for BSC
+          const { ethers } = require("ethers");
+          const gasLimit = 21000;
+          const realisticGasPrice = ethers.parseUnits("5", "gwei"); // 5 Gwei baseline for BSC
+          baseFee = parseFloat(ethers.formatEther(BigInt(gasLimit) * realisticGasPrice));
+        }
+      } catch (error) {
+        console.log("BSC fee calculation failed, using fallback:", error.message);
+        // Fallback to realistic BSC fees
+        const { ethers } = require("ethers");
+        const gasLimit = 21000;
+        const fallbackGasPrice = ethers.parseUnits("5", "gwei");
+        baseFee = parseFloat(ethers.formatEther(BigInt(gasLimit) * fallbackGasPrice));
+      }
+
+      // Calculate priority-based fees
+      const networkFee = {
+        low: baseFee * 0.8,    // 80% for low priority
+        medium: baseFee,       // Base fee for medium
+        high: baseFee * 1.3,   // 130% for high priority
+      };
+
+      fees = {
+        low: {
+          network: networkFee.low,
+          platform: platformFeeAmount,
+          total: networkFee.low + platformFeeAmount,
+        },
+        medium: {
+          network: networkFee.medium,
+          platform: platformFeeAmount,
+          total: networkFee.medium + platformFeeAmount,
+        },
+        high: {
+          network: networkFee.high,
+          platform: platformFeeAmount,
+          total: networkFee.high + platformFeeAmount,
+        },
+      };
+
+      dustHandling = {
+        minimumTransactionAmount: 0.01, // Minimum BNB transaction
+        note: "Platform fee will be sent in a separate transaction to admin wallet",
+      };
+
+      estimatedConfirmationTime = {
+        low: "10-20 seconds",
+        medium: "5-10 seconds",
+        high: "3-5 seconds",
+      };
+    }
 
     res.status(200).json({
       success: true,
       message: "Transaction fees estimated successfully",
       data: {
+        currency: currency,
+        amount: amount,
         fees,
-        dustHandling: {
-          dustThreshold: dustThreshold,
-          platformFeeIsDust: platformFeeAmount < dustThreshold,
-          note:
-            platformFeeAmount < dustThreshold
-              ? "Platform fee is below dust threshold - will be added to network fee for miners, but you still pay the full platform fee"
-              : "Platform fee will be sent to admin wallet",
+        dustHandling,
+        estimatedConfirmationTime,
+        recommendations: {
+          low: "Slower confirmation, lowest cost",
+          medium: "Balanced speed and cost (recommended)",
+          high: "Fastest confirmation, highest cost",
         },
-        estimatedConfirmationTime: {
-          low: "60-120 minutes",
-          medium: "10-30 minutes",
-          high: "5-15 minutes",
-        },
+        note: "Actual fees may vary based on network conditions at the time of transaction.",
       },
     });
   } catch (error) {
