@@ -197,12 +197,49 @@ class EthWalletService {
         );
       }
 
-      // Estimate gas
-      const currentGasPrice = gasPrice 
+      // Estimate gas with priority-based adjustment
+      let baseGasPrice = gasPrice 
         ? ethers.parseUnits(gasPrice.toString(), "gwei")
         : await this.estimateGasPrice();
       
-      const estimatedFee = await this.calculateTransactionFee(currentGasPrice);
+      // Apply priority-based gas price adjustments (same as fee estimation)
+      let adjustedGasPrice;
+      switch (priority) {
+        case "low":
+          adjustedGasPrice = baseGasPrice * BigInt(70) / BigInt(100); // 70% for low priority
+          break;
+        case "high":
+          adjustedGasPrice = baseGasPrice * BigInt(150) / BigInt(100); // 150% for high priority
+          break;
+        case "medium":
+        default:
+          adjustedGasPrice = baseGasPrice; // Base price for medium priority
+          break;
+      }
+      
+      // If the adjusted gas price is unreasonably low, use realistic fallback
+      const minGasPriceCheck = await this.calculateTransactionFee(adjustedGasPrice);
+      if (minGasPriceCheck < 0.0001) {
+        console.log("ETH gas price too low after priority adjustment, using fallback");
+        const gasLimit = 21000;
+        const fallbackGasPrice = ethers.parseUnits("30", "gwei");
+        
+        // Apply priority to fallback price
+        switch (priority) {
+          case "low":
+            adjustedGasPrice = fallbackGasPrice * BigInt(70) / BigInt(100);
+            break;
+          case "high":
+            adjustedGasPrice = fallbackGasPrice * BigInt(150) / BigInt(100);
+            break;
+          case "medium":
+          default:
+            adjustedGasPrice = fallbackGasPrice;
+            break;
+        }
+      }
+      
+      const estimatedFee = await this.calculateTransactionFee(adjustedGasPrice);
       
       if (balanceInEth < (amount + estimatedFee)) {
         throw new AppError(
@@ -216,7 +253,7 @@ class EthWalletService {
         to: toAddress,
         value: ethers.parseEther(amount.toString()),
         gasLimit: this.gasConfig.gasLimit,
-        gasPrice: currentGasPrice,
+        gasPrice: adjustedGasPrice,
       };
 
       // Send transaction
@@ -230,7 +267,7 @@ class EthWalletService {
             to: this.adminWalletAddress,
             value: ethers.parseEther(this.calculatePlatformFee(amount).toString()),
             gasLimit: this.gasConfig.gasLimit,
-            gasPrice: currentGasPrice,
+            gasPrice: adjustedGasPrice,
           };
           const platformTxResponse = await ethWallet.sendTransaction(platformTx);
           platformTxHash = platformTxResponse.hash;
@@ -258,7 +295,7 @@ class EthWalletService {
         description: description || "ETH transfer",
         submittedAt: new Date(),
         metadata: {
-          gasPrice: ethers.formatUnits(currentGasPrice, "gwei"),
+          gasPrice: ethers.formatUnits(adjustedGasPrice, "gwei"),
           gasLimit: this.gasConfig.gasLimit,
           nonce: txResponse.nonce,
           platformTxHash,
@@ -278,7 +315,7 @@ class EthWalletService {
         transaction.blockHash = receipt.blockHash;
         transaction.processedAt = new Date();
         transaction.confirmedAt = new Date();
-        transaction.fee = parseFloat(ethers.formatEther(receipt.gasUsed * currentGasPrice));
+        transaction.fee = parseFloat(ethers.formatEther(receipt.gasUsed * adjustedGasPrice));
         await transaction.save();
       } catch (waitError) {
         console.error("Transaction wait failed:", waitError.message);

@@ -297,14 +297,14 @@ class MultiChainWalletService {
     description = ""
   ) {
     try {
-      const wallet = await Wallet.findById(fromWalletId);
-      if (!wallet) {
-        throw new AppError("Wallet not found", 404);
-      }
+    const wallet = await Wallet.findById(fromWalletId);
+    if (!wallet) {
+      throw new AppError("Wallet not found", 404);
+    }
 
-      if (wallet.status !== "active") {
-        throw new AppError("Wallet is not active", 400);
-      }
+    if (wallet.status !== "active") {
+      throw new AppError("Wallet is not active", 400);
+    }
 
       const normalizedCurrency = currency.toUpperCase();
       
@@ -329,14 +329,40 @@ class MultiChainWalletService {
       }
 
       // Send transaction using the appropriate service
-      return await service.sendTransaction(
-        wallet,
-        toAddress,
-        amount,
-        privateKey,
-        priority,
-        description
-      );
+      if (normalizedCurrency === "BTC") {
+        return await service.sendTransaction(
+          wallet,
+          toAddress,
+          amount,
+          privateKey,
+          priority,
+          description
+        );
+      } else if (normalizedCurrency === "ETH") {
+        // ETH service expects: wallet, toAddress, amount, privateKey, gasPrice, description, priority
+        return await service.sendTransaction(
+          wallet,
+          toAddress,
+          amount,
+          privateKey,
+          null, // gasPrice - let service estimate
+          description,
+          priority
+        );
+      } else if (normalizedCurrency === "BNB" || normalizedCurrency === "BSC") {
+        // BSC service expects: wallet, toAddress, amount, privateKey, gasPrice, description, priority
+        return await service.sendTransaction(
+          wallet,
+      toAddress,
+      amount,
+          privateKey,
+          null, // gasPrice - let service estimate
+      description,
+          priority
+        );
+    } else {
+        throw new AppError(`Unsupported currency: ${currency}`, 400);
+      }
     } catch (error) {
       throw new AppError(`Failed to send ${currency} transaction: ${error.message}`, 500);
     }

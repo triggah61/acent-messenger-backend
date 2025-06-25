@@ -144,8 +144,6 @@ exports.sendTransaction = catchAsync(async (req, res) => {
     priority: "required|in:low,medium,high,custom",
   });
 
-  console.log("req.body", req.body);
-
   let { currency, toAddress, amount, priority, description } = req.body;
   const userId = req.user._id;
 

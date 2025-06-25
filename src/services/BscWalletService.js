@@ -198,28 +198,55 @@ class BscWalletService {
         );
       }
 
-      // Estimate gas (BSC has lower gas costs than ETH)
-      const currentGasPrice = gasPrice 
+      // Estimate gas with priority-based adjustment (BSC has lower gas costs than ETH)
+      let baseGasPrice = gasPrice 
         ? ethers.parseUnits(gasPrice.toString(), "gwei")
         : await this.estimateGasPrice();
       
-      const estimatedFee = await this.calculateTransactionFee(currentGasPrice);
+      // Apply priority-based gas price adjustments (same as fee estimation)
+      let adjustedGasPrice;
+      switch (priority) {
+        case "low":
+          adjustedGasPrice = baseGasPrice * BigInt(70) / BigInt(100); // 70% for low priority
+          break;
+        case "high":
+          adjustedGasPrice = baseGasPrice * BigInt(140) / BigInt(100); // 140% for high priority
+          break;
+        case "medium":
+        default:
+          adjustedGasPrice = baseGasPrice; // Base price for medium priority
+          break;
+      }
+      
+      // If the adjusted gas price is unreasonably low, use realistic fallback
+      const minGasPriceCheck = await this.calculateTransactionFee(adjustedGasPrice);
+      if (minGasPriceCheck < 0.0003) {
+        console.log("BNB gas price too low after priority adjustment, using fallback");
+        const gasLimit = 21000;
+        const fallbackGasPrice = ethers.parseUnits("15", "gwei");
+        
+        // Apply priority to fallback price
+        switch (priority) {
+          case "low":
+            adjustedGasPrice = fallbackGasPrice * BigInt(70) / BigInt(100);
+            break;
+          case "high":
+            adjustedGasPrice = fallbackGasPrice * BigInt(140) / BigInt(100);
+            break;
+          case "medium":
+          default:
+            adjustedGasPrice = fallbackGasPrice;
+            break;
+        }
+      }
+      
+      const estimatedFee = await this.calculateTransactionFee(adjustedGasPrice);
       
       if (balanceInBnb < (amount + estimatedFee)) {
         throw new AppError(
           `Insufficient balance including gas fees. Available: ${balanceInBnb}, Required: ${amount + estimatedFee}`, 
           400
         );
-      }
-
-      // Adjust gas price based on priority
-      let adjustedGasPrice;
-      if (priority === "low") {
-        adjustedGasPrice = BigInt(Math.floor(Number(currentGasPrice) * 0.8));
-      } else if (priority === "high") {
-        adjustedGasPrice = BigInt(Math.floor(Number(currentGasPrice) * 1.2));
-      } else {
-        adjustedGasPrice = currentGasPrice;
       }
 
       // Create transaction
