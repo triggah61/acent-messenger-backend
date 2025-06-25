@@ -332,9 +332,10 @@ class MultiChainWalletService {
         ? process.env.ETH_MAINNET_RPC_URL || "https://eth-mainnet.public.blastapi.io"
         : process.env.ETH_TESTNET_RPC_URL || "https://eth-sepolia.public.blastapi.io";
       
-      const provider = new ethers.providers.JsonRpcProvider(rpcUrl);
+      const provider = new ethers.JsonRpcProvider(rpcUrl);
+      
       const balance = await provider.getBalance(address);
-      const balanceInEth = parseFloat(ethers.utils.formatEther(balance));
+      const balanceInEth = parseFloat(ethers.formatEther(balance));
 
       return {
         balance: balanceInEth,
@@ -359,9 +360,9 @@ class MultiChainWalletService {
         ? process.env.BSC_MAINNET_RPC_URL || "https://bsc-dataseed1.binance.org/"
         : process.env.BSC_TESTNET_RPC_URL || "https://data-seed-prebsc-1-s1.binance.org:8545/";
       
-      const provider = new ethers.providers.JsonRpcProvider(rpcUrl);
+      const provider = new ethers.JsonRpcProvider(rpcUrl);
       const balance = await provider.getBalance(address);
-      const balanceInBnb = parseFloat(ethers.utils.formatEther(balance));
+      const balanceInBnb = parseFloat(ethers.formatEther(balance));
 
       return {
         balance: balanceInBnb,

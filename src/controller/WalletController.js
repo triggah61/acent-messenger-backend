@@ -59,6 +59,11 @@ exports.walletInformation = catchAsync(async (req, res) => {
 
   let usdBalance = btcPrice * btcBalance;
 
+  let { balance: ethBalance, unconfirmedBalance: ethUnconfirmedBalance } =
+    await bitcoinWalletService.getEthereumBalance(wallet?.ethAddress);
+  let { balance: bscBalance, unconfirmedBalance: bscUnconfirmedBalance } =
+    await bitcoinWalletService.getBSCBalance(wallet?.bscAddress);
+
   res.status(200).json({
     success: true,
     message: "Wallet information retrieved successfully",
@@ -71,11 +76,9 @@ exports.walletInformation = catchAsync(async (req, res) => {
       createdAt: wallet.createdAt,
       lastUsed: wallet.lastUsed,
       network: wallet.network,
-      // balance: balance,
-      availableBtcBalance: availableBtcBalance,
       btcBalance: btcBalance,
-      ethBalance: 0,
-      bscBalance: 0,
+      ethBalance,
+      bscBalance,
       usdBalance: usdBalance,
       // networkFee,
       platformFeePercentage: bitcoinWalletService.platformFeePercentage,
