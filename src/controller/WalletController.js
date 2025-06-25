@@ -472,13 +472,14 @@ exports.estimateTransactionFee = catchAsync(async (req, res, next) => {
       try {
         baseFee = await BscWalletService.calculateTransactionFee();
         
-        // If the fee is unreasonably high or low, use realistic fallback
-        if (baseFee < 0.00001 || baseFee > 0.01) {
-          console.log("BSC fee unrealistic, using fallback");
-          // Use realistic BSC gas prices: 3-10 Gwei for BSC
+        // If the fee is unreasonably low, use realistic fallback
+        // Current BSC fees should be around $0.10-$0.50 (0.0003-0.0015 BNB at ~$300/BNB)
+        if (baseFee < 0.0003) {
+          console.log("BNB fee too low, using realistic fallback");
+          // Use realistic BSC gas prices: 10-20 Gwei for current BSC mainnet
           const { ethers } = require("ethers");
           const gasLimit = 21000;
-          const realisticGasPrice = ethers.parseUnits("5", "gwei"); // 5 Gwei baseline for BSC
+          const realisticGasPrice = ethers.parseUnits("15", "gwei"); // 15 Gwei baseline for BSC
           baseFee = parseFloat(ethers.formatEther(BigInt(gasLimit) * realisticGasPrice));
         }
       } catch (error) {
@@ -486,15 +487,15 @@ exports.estimateTransactionFee = catchAsync(async (req, res, next) => {
         // Fallback to realistic BSC fees
         const { ethers } = require("ethers");
         const gasLimit = 21000;
-        const fallbackGasPrice = ethers.parseUnits("5", "gwei");
+        const fallbackGasPrice = ethers.parseUnits("15", "gwei"); // Higher baseline for realistic fees
         baseFee = parseFloat(ethers.formatEther(BigInt(gasLimit) * fallbackGasPrice));
       }
 
       // Calculate priority-based fees
       const networkFee = {
-        low: baseFee * 0.8,    // 80% for low priority
+        low: baseFee * 0.7,    // 70% for low priority
         medium: baseFee,       // Base fee for medium
-        high: baseFee * 1.3,   // 130% for high priority
+        high: baseFee * 1.4,   // 140% for high priority
       };
 
       fees = {

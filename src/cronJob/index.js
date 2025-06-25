@@ -10,7 +10,7 @@ transactionConfirmationJob.start();
 btcTransactionListenerJob.start();
 
 // Start transaction listener for incoming transactions (every 5 minutes)
-ethTransactionListenerJob.stop();
+ethTransactionListenerJob.start();
 
 // Start transaction listener for incoming transactions (every 5 minutes)
 bscTransactionListenerJob.stop();
