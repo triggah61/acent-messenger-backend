@@ -1,10 +1,11 @@
 const cron = require("node-cron");
 const Wallet = require("../model/Wallet");
 const Transaction = require("../model/Transaction");
+const EthWalletService = require("../services/EthWalletService");
 const logger = require("../config/logger");
+const axios = require("axios");
 const { ethers } = require("ethers");
 const { v4: uuidv4 } = require("uuid");
-const axios = require("axios");
 
 /**
  * Ethereum Transaction Listener Service
@@ -13,138 +14,86 @@ const axios = require("axios");
  */
 class EthTransactionListenerService {
   constructor() {
-    this.network = process.env.ETH_NETWORK === "mainnet" ? "mainnet" : "testnet";
-    this.provider = this.initializeProvider();
+    this.currency = "ETH";
+    this.network = EthWalletService.network;
+    this.etherscanApi = EthWalletService.etherscanApi;
     this.lastCheckedBlock = null;
     this.isRunning = false;
-    this.currency = "ETH";
   }
 
   /**
-   * Initialize Ethereum provider
-   */
-  initializeProvider() {
-    try {
-      // Use Infura, Alchemy, or public RPC
-      const rpcUrl = this.network === "mainnet" 
-        ? process.env.ETH_MAINNET_RPC_URL || "https://eth-mainnet.public.blastapi.io"
-        : process.env.ETH_TESTNET_RPC_URL || "https://eth-sepolia.public.blastapi.io";
-      
-      return new ethers.JsonRpcProvider(rpcUrl);
-    } catch (error) {
-      logger.error("Failed to initialize Ethereum provider:", error.message);
-      throw error;
-    }
-  }
-
-  /**
-   * Get the latest block number from Ethereum blockchain
+   * Get the latest block number from Ethereum
    */
   async getLatestBlockNumber() {
     try {
-      return await this.provider.getBlockNumber();
+      const provider = new ethers.JsonRpcProvider(EthWalletService.rpcUrl);
+      return await provider.getBlockNumber();
     } catch (error) {
-      logger.error("Failed to get latest block number:", error.message);
+      logger.error("Failed to get latest ETH block number:", error.message);
       throw error;
     }
   }
 
   /**
-   * Get all active ETH wallet addresses from database
+   * Get all active Ethereum wallet addresses from database
    */
-  async getAllEthWalletAddresses() {
+  async getAllWalletAddresses() {
     try {
       const wallets = await Wallet.find({
         status: "active",
-        network: this.network,
         ethAddress: { $exists: true, $ne: null },
-      }).select("ethAddress userId network");
-
-      console.log(wallets);
+      }).select("ethAddress userId");
 
       return wallets.map((wallet) => ({
-        ethAddress: wallet.ethAddress,
+        address: wallet.ethAddress,
         userId: wallet.userId,
         walletId: wallet._id,
       }));
     } catch (error) {
-      logger.error("Failed to get ETH wallet addresses:", error.message);
+      logger.error("Failed to get Ethereum wallet addresses:", error.message);
       throw error;
     }
   }
 
   /**
-   * Get transaction history for an Ethereum address
+   * Get transactions for a specific address using Etherscan API
    */
-  async getAddressTransactions(address, fromBlock = 0) {
+  async getAddressTransactions(address, startBlock = 0) {
     try {
-      // Get transaction history using Etherscan API or similar
-      const etherscanApiKey = process.env.ETHERSCAN_API_KEY;
-      const etherscanBaseUrl = this.network === "mainnet" 
-        ? "https://api.etherscan.io/api"
-        : "https://api-sepolia.etherscan.io/api";
-
-      if (!etherscanApiKey) {
-        logger.warn("No Etherscan API key provided, using limited block scanning");
-        return this.scanBlocksForTransactions(address, fromBlock);
-      }
-
-      const etherscanResponse = await axios.get(
-        `${etherscanBaseUrl}?module=account&action=txlist&address=${address}&startblock=${fromBlock}&endblock=latest&sort=desc&apikey=${etherscanApiKey}`
-      );
-      
-      const data = etherscanResponse.data;
-      
-      if (data.status === "1") {
-        return data.result;
-      } else {
-        logger.warn(`Etherscan API error: ${data.message}`);
+      if (!this.etherscanApi.apiKey) {
+        logger.warn("Etherscan API key not configured, skipping ETH transaction check");
         return [];
       }
-    } catch (error) {
-      logger.error(`Failed to get ETH transactions for address ${address}:`, error.message);
-      return [];
-    }
-  }
 
-  /**
-   * Fallback method to scan recent blocks for transactions (limited)
-   */
-  async scanBlocksForTransactions(address, fromBlock) {
-    try {
-      const latestBlock = await this.getLatestBlockNumber();
-      const blocksToScan = Math.min(100, latestBlock - fromBlock); // Limit to 100 blocks
-      const transactions = [];
+      const params = new URLSearchParams({
+        module: "account",
+        action: "txlist",
+        address: address,
+        startblock: startBlock,
+        endblock: "latest",
+        page: 1,
+        offset: 100,
+        sort: "desc",
+        apikey: this.etherscanApi.apiKey,
+      });
 
-      for (let i = 0; i < blocksToScan; i++) {
-        const blockNumber = latestBlock - i;
-        try {
-          const block = await this.provider.getBlockWithTransactions(blockNumber);
-          
-          // Check each transaction in the block
-          for (const tx of block.transactions) {
-            if (tx.to && tx.to.toLowerCase() === address.toLowerCase()) {
-              transactions.push({
-                hash: tx.hash,
-                from: tx.from,
-                to: tx.to,
-                value: tx.value.toString(),
-                gasPrice: tx.gasPrice.toString(),
-                gasUsed: tx.gasLimit.toString(),
-                blockNumber: blockNumber.toString(),
-                blockHash: block.hash,
-                timeStamp: block.timestamp.toString(),
-              });
-            }
-          }
-        } catch (blockError) {
-          logger.error(`Error scanning block ${blockNumber}:`, blockError.message);
+      const response = await axios.get(`${this.etherscanApi.baseUrl}?${params}`, {
+        timeout: 15000,
+      });
+
+      if (response.data.status !== "1") {
+        if (response.data.message === "No transactions found") {
+          return [];
         }
+        throw new Error(response.data.message || "Etherscan API error");
       }
 
-      return transactions;
+      return response.data.result || [];
     } catch (error) {
-      logger.error("Error in block scanning:", error.message);
+      logger.error(
+        `Failed to get ETH transactions for address ${address}:`,
+        error.message
+      );
       return [];
     }
   }
@@ -154,7 +103,10 @@ class EthTransactionListenerService {
    */
   async transactionExists(txHash) {
     try {
-      const existingTx = await Transaction.findOne({ txHash, currency: this.currency });
+      const existingTx = await Transaction.findOne({
+        txHash,
+        currency: this.currency,
+      });
       return !!existingTx;
     } catch (error) {
       logger.error("Error checking ETH transaction existence:", error.message);
@@ -163,88 +115,79 @@ class EthTransactionListenerService {
   }
 
   /**
-   * Analyze Ethereum transaction
+   * Analyze Ethereum transaction to determine if it's incoming to our wallet
    */
-  analyzeEthTransaction(tx, walletAddress, userId) {
+  analyzeTransaction(tx, walletAddress) {
     const isIncoming = tx.to && tx.to.toLowerCase() === walletAddress.toLowerCase();
-    const value = ethers.BigNumber.from(tx.value);
-    const gasPrice = ethers.BigNumber.from(tx.gasPrice || "0");
-    const gasUsed = ethers.BigNumber.from(tx.gasUsed || tx.gas || "21000");
-    const fee = gasPrice.mul(gasUsed);
+    const isOutgoing = tx.from && tx.from.toLowerCase() === walletAddress.toLowerCase();
+
+    // Convert values from Wei to ETH
+    const valueInEth = parseFloat(ethers.formatEther(tx.value));
+    const gasUsed = parseInt(tx.gasUsed || 0);
+    const gasPrice = parseInt(tx.gasPrice || 0);
+    const feeInEth = gasUsed > 0 ? parseFloat(ethers.formatEther(BigInt(gasUsed) * BigInt(gasPrice))) : 0;
 
     return {
       isIncoming,
-      amount: value.toString(),
-      fee: fee.toString(),
-      fromAddress: tx.from,
-      toAddress: tx.to,
+      isOutgoing,
+      amount: valueInEth,
+      fee: feeInEth,
       blockNumber: parseInt(tx.blockNumber),
       blockHash: tx.blockHash,
-      timeStamp: parseInt(tx.timeStamp),
-      gasPrice: gasPrice.toString(),
-      gasUsed: gasUsed.toString(),
+      confirmed: parseInt(tx.confirmations) >= 1,
+      confirmations: parseInt(tx.confirmations),
+      timestamp: new Date(parseInt(tx.timeStamp) * 1000),
+      gasUsed,
+      gasPrice: parseFloat(ethers.formatUnits(gasPrice, "gwei")),
     };
   }
 
   /**
-   * Create ETH transaction record in database
+   * Create Ethereum transaction record in database
    */
-  async createEthTransactionRecord(tx, analysis, walletData) {
+  async createTransactionRecord(tx, analysis, walletData) {
     try {
       const transaction = new Transaction({
         internalId: uuidv4(),
         txHash: tx.hash,
-        currency: this.currency,
+        currency: "ETH",
         type: analysis.isIncoming ? "deposit" : "withdrawal",
         userId: walletData.userId,
-        fromAddress: analysis.fromAddress,
-        toAddress: analysis.toAddress,
-        amount: parseFloat(ethers.utils.formatEther(analysis.amount)),
-        fee: parseFloat(ethers.utils.formatEther(analysis.fee)),
+        fromAddress: tx.from || "external",
+        toAddress: tx.to,
+        amount: analysis.amount,
+        fee: analysis.fee,
         adminFee: 0, // No admin fee for incoming transactions
-        netAmount: parseFloat(ethers.utils.formatEther(analysis.amount)),
-        status: "confirmed", // ETH transactions are confirmed when found
-        confirmations: 1,
+        netAmount: analysis.amount,
+        status: analysis.confirmed ? "confirmed" : "processing",
+        confirmations: analysis.confirmations,
         blockNumber: analysis.blockNumber,
         blockHash: analysis.blockHash,
         network: this.network,
         priority: "medium",
-        description: "Incoming ETH transaction detected by listener",
-        tags: ["auto-detected", "incoming", "eth"],
-        inputs: [
-          {
-            txid: tx.hash,
-            vout: 0,
-            value: parseFloat(ethers.utils.formatEther(analysis.amount)),
-          },
-        ],
-        outputs: [
-          {
-            address: analysis.toAddress,
-            value: parseFloat(ethers.utils.formatEther(analysis.amount)),
-          },
-        ],
-        submittedAt: new Date(analysis.timeStamp * 1000),
-        processedAt: new Date(analysis.timeStamp * 1000),
-        confirmedAt: new Date(analysis.timeStamp * 1000),
+        description: `Incoming ${this.currency} transaction detected by listener`,
+        tags: ["auto-detected", "incoming", this.currency.toLowerCase()],
+        submittedAt: analysis.timestamp,
+        processedAt: analysis.confirmed ? analysis.timestamp : null,
+        confirmedAt: analysis.confirmed ? analysis.timestamp : null,
         metadata: {
           detectedBy: "eth-transaction-listener",
           detectedAt: new Date(),
-          gasPrice: analysis.gasPrice,
           gasUsed: analysis.gasUsed,
+          gasPrice: analysis.gasPrice + " Gwei",
           rawTransaction: tx,
         },
       });
 
       await transaction.save();
       logger.info(
-        `Created ETH transaction record for ${tx.hash}, amount: ${ethers.utils.formatEther(analysis.amount)} ETH`
+        `Created ${this.currency} transaction record for ${tx.hash}, amount: ${analysis.amount} ETH`
       );
 
       return transaction;
     } catch (error) {
       logger.error(
-        `Failed to create ETH transaction record for ${tx.hash}:`,
+        `Failed to create ${this.currency} transaction record for ${tx.hash}:`,
         error.message
       );
       throw error;
@@ -252,147 +195,175 @@ class EthTransactionListenerService {
   }
 
   /**
-   * Process transactions for a specific ETH wallet address
+   * Process transactions for a specific wallet
    */
-  async processEthWalletTransactions(walletData) {
+  async processWalletTransactions(walletData) {
     try {
-      logger.info(`Checking ETH transactions for wallet: ${walletData.ethAddress}`);
-
       // Get recent transactions for this address
-      const transactions = await this.getAddressTransactions(
-        walletData.ethAddress,
-        this.lastCheckedBlock || 0
-      );
+      const transactions = await this.getAddressTransactions(walletData.address);
 
-      if (transactions.length === 0) {
-        logger.debug(`No ETH transactions found for ${walletData.ethAddress}`);
-        return;
+      if (!transactions || transactions.length === 0) {
+        return 0;
       }
 
-      let newTransactionsCount = 0;
+      let processedCount = 0;
+
       for (const tx of transactions) {
-        // Check if we already have this transaction
-        if (await this.transactionExists(tx.hash)) {
-          logger.debug(`ETH transaction ${tx.hash} already exists, skipping`);
-          continue;
-        }
+        try {
+          // Skip if we've already processed this transaction
+          if (await this.transactionExists(tx.hash)) {
+            continue;
+          }
 
-        // Analyze the transaction
-        const analysis = this.analyzeEthTransaction(
-          tx,
-          walletData.ethAddress,
-          walletData.userId
-        );
+          // Analyze the transaction
+          const analysis = this.analyzeTransaction(tx, walletData.address);
 
-        // Only process incoming transactions with value > 0
-        if (analysis.isIncoming && ethers.BigNumber.from(analysis.amount).gt(0)) {
-          logger.info(
-            `New incoming ETH transaction detected: ${tx.hash}, amount: ${ethers.utils.formatEther(analysis.amount)} ETH`
+          // Only create records for incoming transactions with value
+          if (analysis.isIncoming && analysis.amount > 0) {
+            await this.createTransactionRecord(tx, analysis, walletData);
+            processedCount++;
+
+            // Update wallet balance if transaction is confirmed
+            if (analysis.confirmed) {
+              try {
+                // Get updated balance from blockchain
+                const balanceInfo = await EthWalletService.getBalance(walletData.address);
+                
+                // Update wallet in database
+                await Wallet.findByIdAndUpdate(walletData.walletId, {
+                  $set: {
+                    "balances.eth": balanceInfo.balance,
+                    lastUsed: new Date(),
+                  },
+                });
+
+                logger.info(
+                  `Updated wallet ${walletData.walletId} ETH balance to ${balanceInfo.balance} ETH`
+                );
+              } catch (balanceError) {
+                logger.error(
+                  `Failed to update ETH wallet balance for ${walletData.walletId}:`,
+                  balanceError.message
+                );
+              }
+            }
+          }
+        } catch (error) {
+          logger.error(
+            `Error processing ETH transaction ${tx.hash}:`,
+            error.message
           );
-
-          // Create transaction record
-          await this.createEthTransactionRecord(tx, analysis, walletData);
-          newTransactionsCount++;
         }
       }
 
-      logger.info(`Processed ${newTransactionsCount} new ETH transactions for ${walletData.ethAddress}`);
+      if (processedCount > 0) {
+        logger.info(
+          `Processed ${processedCount} new ${this.currency} transactions for wallet ${walletData.address}`
+        );
+      }
+
+      return processedCount;
     } catch (error) {
       logger.error(
-        `Error processing ETH transactions for ${walletData.ethAddress}:`,
+        `Failed to process ${this.currency} transactions for wallet ${walletData.address}:`,
         error.message
       );
+      return 0;
     }
   }
 
   /**
-   * Main listener function - scans all ETH wallet addresses for new transactions
+   * Main function to scan for new transactions across all wallets
    */
-  async scanForNewEthTransactions() {
+  async scanForNewTransactions() {
     if (this.isRunning) {
-      logger.warn(
-        "ETH transaction listener is already running, skipping this cycle"
-      );
+      logger.warn(`${this.currency} transaction listener is already running, skipping...`);
       return;
     }
 
     this.isRunning = true;
-    logger.info("Starting ETH transaction listener scan...");
+    const startTime = Date.now();
 
     try {
-      // Get current block number
-      const currentBlock = await this.getLatestBlockNumber();
-      logger.info(`Current ETH block number: ${currentBlock}`);
+      logger.info(`Starting ${this.currency} transaction scan...`);
 
-      if (this.lastCheckedBlock && currentBlock <= this.lastCheckedBlock) {
-        logger.info("No new ETH blocks since last check");
-        this.isRunning = false;
+      // Get all wallet addresses
+      const walletAddresses = await this.getAllWalletAddresses();
+
+      if (walletAddresses.length === 0) {
+        logger.info(`No ${this.currency} wallet addresses found for scanning`);
         return;
       }
 
-      // Get all ETH wallet addresses to monitor
-      const wallets = await this.getAllEthWalletAddresses();
-      logger.info(`Monitoring ${wallets.length} ETH wallet addresses`);
+      logger.info(
+        `Scanning ${walletAddresses.length} ${this.currency} wallet addresses for new transactions`
+      );
 
-      if (wallets.length === 0) {
-        logger.info("No active ETH wallets to monitor");
-        this.isRunning = false;
-        return;
-      }
-
-      // Process each wallet address
-      for (const walletData of wallets) {
+      // Process each wallet
+      let totalProcessed = 0;
+      for (const walletData of walletAddresses) {
         try {
-          await this.processEthWalletTransactions(walletData);
+          const processed = await this.processWalletTransactions(walletData);
+          totalProcessed += processed;
 
-          // Add small delay between requests to be respectful to APIs
+          // Add small delay between requests to be respectful to the API
           await new Promise((resolve) => setTimeout(resolve, 1000));
         } catch (error) {
           logger.error(
-            `Error processing ETH wallet ${walletData.ethAddress}:`,
+            `Error processing ${this.currency} wallet ${walletData.address}:`,
             error.message
           );
-          continue; // Continue with next wallet even if one fails
         }
       }
 
-      // Update last checked block
-      this.lastCheckedBlock = currentBlock;
+      const duration = Date.now() - startTime;
       logger.info(
-        `ETH transaction listener scan completed. Last checked block: ${currentBlock}`
+        `${this.currency} transaction scan completed in ${duration}ms. Processed ${totalProcessed} new transactions.`
       );
     } catch (error) {
-      logger.error("Error in ETH transaction listener scan:", error);
+      logger.error(`${this.currency} transaction scan failed:`, error.message);
     } finally {
       this.isRunning = false;
     }
   }
+
+  /**
+   * Start the cron job for monitoring transactions
+   */
+  startMonitoring() {
+    // Run every 2 minutes for ETH transactions
+    const cronJob = cron.schedule(
+      "*/2 * * * *",
+      async () => {
+        await this.scanForNewTransactions();
+      },
+      {
+        scheduled: false,
+        timezone: "UTC",
+      }
+    );
+
+    cronJob.start();
+    logger.info(`${this.currency} transaction listener started - running every 2 minutes`);
+    return cronJob;
+  }
+
+  /**
+   * Manual trigger for testing
+   */
+  async triggerScan() {
+    logger.info(`Manually triggering ${this.currency} transaction scan...`);
+    await this.scanForNewTransactions();
+  }
 }
 
-// Create instance
+// Create service instance
 const ethTransactionListener = new EthTransactionListenerService();
 
-/**
- * ETH Transaction Listener Cron Job
- * Runs every 2 minutes to check for new incoming ETH transactions
- */
-exports.ethTransactionListenerJob = cron.schedule(
-  "*/30 * * * * *",
-  async () => {
-    logger.info("Starting ETH transaction listener job...");
-
-    try {
-      await ethTransactionListener.scanForNewEthTransactions();
-      logger.info("ETH transaction listener job completed successfully");
-    } catch (error) {
-      logger.error("Error in ETH transaction listener job:", error);
-    }
-  },
-  {
-    scheduled: true,
-    timezone: "UTC",
-  }
-);
-
-// Export the service for manual testing
-exports.EthTransactionListenerService = EthTransactionListenerService; 
+// Export functions for external use
+module.exports = {
+  ethTransactionListenerJob: ethTransactionListener.startMonitoring(),
+  triggerEthScan: () => ethTransactionListener.triggerScan(),
+  getEthWalletAddresses: () => ethTransactionListener.getAllWalletAddresses(),
+  ethTransactionListener,
+}; 

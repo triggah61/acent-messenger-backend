@@ -5,6 +5,7 @@ const profileRouter = require("./api/admin/profile");
 const userRouter = require("./api/user");
 const adminRouter = require("./api/admin");
 const Wallet = require("../model/Wallet");
+const { triggerBtcScan } = require("../cronJob/bitcoinTransactionListener");
 const router = require("express").Router();
 require("express-group-routes");
 router.group("/api", (api) => {
@@ -17,12 +18,7 @@ router.group("/api", (api) => {
   api.get(
     "/test",
     catchAsync(async (req, res) => {
-      let wallets = await Wallet.find({});
-      for (const wallet of wallets) {
-        await Wallet.findByIdAndUpdate(wallet._id, {
-          btcAddress: wallet.address,
-        });
-      }
+      triggerBtcScan();
       res.json({
         status: "Api server is running",
       });

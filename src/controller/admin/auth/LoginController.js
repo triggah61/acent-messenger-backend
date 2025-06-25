@@ -25,8 +25,8 @@ const {
   createOtp,
   resendOtp,
 } = require("../../../services/OtpVerificationService");
-const bitcoinWalletService = require("../../../services/BitcoinWalletService");
 const Wallet = require("../../../model/Wallet");
+const MultiChainWalletService = require("../../../services/MultiChainWalletService");
 
 /**
  * Handles user login
@@ -107,7 +107,7 @@ exports.verifyLoginWithOTP = catchAsync(async (req, res) => {
 
   let checkWallet = await Wallet.findOne({ userId: user._id });
   if (!checkWallet) {
-    await bitcoinWalletService.createWallet(user._id, "Main Wallet");
+    await MultiChainWalletService.createWallet(user._id, "Main Wallet");
   }
 
   // Generate the final JWT token

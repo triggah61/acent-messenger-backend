@@ -1,19 +1,23 @@
 const cron = require("node-cron");
 const Wallet = require("../model/Wallet");
 const Transaction = require("../model/Transaction");
+const BtcWalletService = require("../services/BtcWalletService");
 const logger = require("../config/logger");
 const axios = require("axios");
 const { v4: uuidv4 } = require("uuid");
 
 /**
- * Transaction Listener Service
- * Monitors blockchain for incoming transactions to internal wallet addresses
- * Runs every 5 minutes to sync new transactions
+ * Bitcoin Transaction Listener Service
+ * Monitors Bitcoin blockchain for incoming transactions to internal wallet addresses
+ * Runs every minute to sync new transactions
  */
-class TransactionListenerService {
+class BtcTransactionListenerService {
   constructor() {
+    this.currency = "BTC";
     this.network =
-      process.env.BITCOIN_NETWORK === "mainnet" ? "mainnet" : "testnet";
+      BtcWalletService.network === require("bitcoinjs-lib").networks.bitcoin
+        ? "mainnet"
+        : "testnet";
     this.networkPath = this.network === "mainnet" ? "" : "testnet/";
     this.lastCheckedBlock = null;
     this.isRunning = false;
@@ -36,22 +40,22 @@ class TransactionListenerService {
   }
 
   /**
-   * Get all active wallet addresses from database
+   * Get all active Bitcoin wallet addresses from database
    */
   async getAllWalletAddresses() {
     try {
       const wallets = await Wallet.find({
         status: "active",
-        network: this.network,
+        btcAddress: { $exists: true, $ne: null },
       }).select("btcAddress userId");
 
       return wallets.map((wallet) => ({
-        btcAddress: wallet.btcAddress,
+        address: wallet.btcAddress,
         userId: wallet.userId,
         walletId: wallet._id,
       }));
     } catch (error) {
-      logger.error("Failed to get wallet addresses:", error.message);
+      logger.error("Failed to get Bitcoin wallet addresses:", error.message);
       throw error;
     }
   }
@@ -84,10 +88,13 @@ class TransactionListenerService {
    */
   async transactionExists(txHash) {
     try {
-      const existingTx = await Transaction.findOne({ txHash });
+      const existingTx = await Transaction.findOne({
+        txHash,
+        // currency: this.currency,
+      });
       return !!existingTx;
     } catch (error) {
-      logger.error("Error checking transaction existence:", error.message);
+      logger.error("Error checking BTC transaction existence:", error.message);
       return false;
     }
   }
@@ -139,7 +146,7 @@ class TransactionListenerService {
   }
 
   /**
-   * Create transaction record in database
+   * Create Bitcoin transaction record in database
    */
   async createTransactionRecord(tx, analysis, walletData) {
     try {
@@ -150,26 +157,26 @@ class TransactionListenerService {
         type: analysis.isIncoming ? "deposit" : "withdrawal",
         userId: walletData.userId,
         fromAddress: analysis.fromAddresses[0] || "external",
-        toAddress: walletData.btcAddress,
-        amount: analysis.incomingAmount,
+        toAddress: walletData.address,
+        amount: BtcWalletService.toBtc(analysis.incomingAmount),
         fee: analysis.fee,
         adminFee: 0, // No admin fee for incoming transactions
-        netAmount: analysis.incomingAmount,
+        netAmount: BtcWalletService.toBtc(analysis.incomingAmount),
         status: analysis.confirmed ? "confirmed" : "processing",
         confirmations: analysis.confirmations,
         blockNumber: analysis.blockHeight,
         blockHash: analysis.blockHash,
         network: this.network,
         priority: "medium",
-        description: "Incoming BTC transaction detected by listener",
-        tags: ["auto-detected", "incoming", "btc"],
+        description: `Incoming ${this.currency} transaction detected by listener`,
+        tags: ["auto-detected", "incoming", this.currency.toLowerCase()],
         inputs: tx.vin.map((input) => ({
           txid: input.txid,
           vout: input.vout,
           value: input.prevout?.value || 0,
         })),
         outputs: analysis.incomingOutputs,
-        submittedAt: new Date(tx.status?.block_time * 1000) || new Date(),
+        // submittedAt: new Date(tx.status?.block_time * 1000) || new Date(),
         processedAt: analysis.confirmed
           ? new Date(tx.status?.block_time * 1000)
           : null,
@@ -185,162 +192,170 @@ class TransactionListenerService {
 
       await transaction.save();
       logger.info(
-        `Created BTC transaction record for ${tx.txid}, amount: ${analysis.incomingAmount} satoshis`
+        `Created ${this.currency} transaction record for ${tx.txid}, amount: ${analysis.incomingAmount} satoshis`
       );
 
       return transaction;
     } catch (error) {
+      console.log("Error here", error.message);
       logger.error(
-        `Failed to create BTC transaction record for ${tx.txid}:`,
+        `Failed to create ${this.currency} transaction record for ${tx.txid}:`,
         error.message
       );
-      throw error;
+      throw new AppError(error.message, 500);
     }
   }
 
   /**
-   * Process transactions for a specific wallet address
+   * Process transactions for a specific wallet
    */
   async processWalletTransactions(walletData) {
     try {
-      logger.info(`Checking transactions for wallet: ${walletData.btcAddress}`);
-
-      // Get recent transactions for this address
       const transactions = await this.getAddressTransactions(
-        walletData.btcAddress
+        walletData.address
       );
 
-      if (transactions.length === 0) {
-        logger.debug(`No transactions found for ${walletData.btcAddress}`);
-        return;
+      if (!transactions || transactions.length === 0) {
+        return 0;
       }
 
-      let newTransactionsCount = 0;
+      let processedCount = 0;
+
       for (const tx of transactions) {
-        // Check if we already have this transaction
-        if (await this.transactionExists(tx.txid)) {
-          logger.debug(`Transaction ${tx.txid} already exists, skipping`);
-          continue;
-        }
+        try {
+          // Skip if we've already processed this transaction
+          if (await this.transactionExists(tx.txid)) {
+            continue;
+          }
 
-        // Analyze the transaction
-        const analysis = this.analyzeTransaction(
-          tx,
-          walletData.btcAddress,
-          walletData.userId
-        );
-
-        // Only process incoming transactions
-        if (analysis.isIncoming && analysis.incomingAmount > 0) {
-          logger.info(
-            `New incoming transaction detected: ${tx.txid}, amount: ${analysis.incomingAmount} satoshis`
+          // Analyze the transaction
+          const analysis = this.analyzeTransaction(
+            tx,
+            walletData.address,
+            walletData.userId
           );
 
-          // Create transaction record
           await this.createTransactionRecord(tx, analysis, walletData);
-          newTransactionsCount++;
+        } catch (error) {
+          logger.error(
+            `Error processing transaction ${tx.txid}:`,
+            error.message
+          );
         }
       }
+
+      if (processedCount > 0) {
+        logger.info(
+          `Processed ${processedCount} new ${this.currency} transactions for wallet ${walletData.address}`
+        );
+      }
+
+      return processedCount;
     } catch (error) {
       logger.error(
-        `Error processing transactions for ${walletData.btcAddress}:`,
+        `Failed to process ${this.currency} transactions for wallet ${walletData.address}:`,
         error.message
       );
+      return 0;
     }
   }
 
   /**
-   * Main listener function - scans all wallet addresses for new transactions
+   * Main function to scan for new transactions across all wallets
    */
   async scanForNewTransactions() {
     if (this.isRunning) {
       logger.warn(
-        "Transaction listener is already running, skipping this cycle"
+        `${this.currency} transaction listener is already running, skipping...`
       );
       return;
     }
 
     this.isRunning = true;
-    logger.info("Starting transaction listener scan...");
+    const startTime = Date.now();
 
     try {
-      // Get current block height
-      const currentBlock = await this.getLatestBlockHeight();
-      logger.info(`Current block height: ${currentBlock}`);
+      logger.info(`Starting ${this.currency} transaction scan...`);
 
-      if (this.lastCheckedBlock && currentBlock <= this.lastCheckedBlock) {
-        logger.info("No new blocks since last check");
-        this.isRunning = false;
+      // Get all wallet addresses
+      const walletAddresses = await this.getAllWalletAddresses();
+
+      if (walletAddresses.length === 0) {
+        logger.info(`No ${this.currency} wallet addresses found for scanning`);
         return;
       }
 
-      // Get all wallet addresses to monitor
-      const wallets = await getAllWalletAddresses();
-      logger.info(`Monitoring ${wallets.length} wallet addresses`);
+      logger.info(
+        `Scanning ${walletAddresses.length} ${this.currency} wallet addresses for new transactions`
+      );
 
-      if (wallets.length === 0) {
-        logger.info("No active wallets to monitor");
-        this.isRunning = false;
-        return;
-      }
-
-      // Process each wallet address
-      let totalNewTransactions = 0;
-      for (const walletData of wallets) {
+      // Process each wallet
+      let totalProcessed = 0;
+      for (const walletData of walletAddresses) {
         try {
-          await this.processWalletTransactions(walletData);
-
-          // Add small delay between requests to be respectful to the API
-          await new Promise((resolve) => setTimeout(resolve, 500));
+          const processed = await this.processWalletTransactions(walletData);
+          totalProcessed += processed;
         } catch (error) {
           logger.error(
-            `Error processing wallet ${walletData.btcAddress}:`,
+            `Error processing ${this.currency} wallet ${walletData.address}:`,
             error.message
           );
-          continue; // Continue with next wallet even if one fails
         }
       }
 
-      // Update last checked block
-      this.lastCheckedBlock = currentBlock;
+      const duration = Date.now() - startTime;
       logger.info(
-        `Transaction listener scan completed. Last checked block: ${currentBlock}`
+        `${this.currency} transaction scan completed in ${duration}ms. Processed ${totalProcessed} new transactions.`
       );
     } catch (error) {
-      logger.error("Error in transaction listener scan:", error);
+      logger.error(`${this.currency} transaction scan failed:`, error.message);
     } finally {
       this.isRunning = false;
     }
+
+    return 0;
+  }
+
+  /**
+   * Start the cron job for monitoring transactions
+   */
+  startMonitoring() {
+    // Run every minute for BTC transactions
+    const cronJob = cron.schedule(
+      "* * * * *",
+      async () => {
+        await this.scanForNewTransactions();
+      },
+      {
+        scheduled: false,
+        timezone: "UTC",
+      }
+    );
+
+    cronJob.start();
+    logger.info(
+      `${this.currency} transaction listener started - running every minute`
+    );
+    return cronJob;
+  }
+
+  /**
+   * Manual trigger for testing
+   */
+  async triggerScan() {
+    logger.info(`Manually triggering ${this.currency} transaction scan...`);
+    await this.scanForNewTransactions();
   }
 }
 
-// Create instance
-const transactionListener = new TransactionListenerService();
+// Create service instance
+const btcTransactionListener = new BtcTransactionListenerService();
 
-// Fix the getAllWalletAddresses function scope
-const getAllWalletAddresses = () => transactionListener.getAllWalletAddresses();
-
-/**
- * Transaction Listener Cron Job
- * Runs every 5 minutes to check for new incoming transactions
- */
-exports.btcTransactionListenerJob = cron.schedule(
-  "*/1 * * * *",
-  async () => {
-    logger.info("Starting transaction listener job...");
-
-    try {
-      await transactionListener.scanForNewTransactions();
-      logger.info("Transaction listener job completed successfully");
-    } catch (error) {
-      logger.error("Error in transaction listener job:", error);
-    }
-  },
-  {
-    scheduled: true,
-    timezone: "UTC",
-  }
-);
-
-// Export the service for manual testing
-exports.TransactionListenerService = TransactionListenerService;
+// Export functions for external use
+module.exports = {
+  btcTransactionListenerJob: btcTransactionListener.startMonitoring(),
+  triggerBtcScan: async () =>
+    await btcTransactionListener.scanForNewTransactions(),
+  getBtcWalletAddresses: () => btcTransactionListener.getAllWalletAddresses(),
+  btcTransactionListener,
+};
