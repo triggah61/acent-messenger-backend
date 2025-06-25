@@ -13,7 +13,7 @@ const axios = require("axios");
  */
 class EthTransactionListenerService {
   constructor() {
-    this.network = process.env.ETH_NETWORK === "mainnet" ? "mainnet" : "sepolia";
+    this.network = process.env.ETH_NETWORK === "mainnet" ? "mainnet" : "testnet";
     this.provider = this.initializeProvider();
     this.lastCheckedBlock = null;
     this.isRunning = false;
@@ -30,7 +30,7 @@ class EthTransactionListenerService {
         ? process.env.ETH_MAINNET_RPC_URL || "https://eth-mainnet.public.blastapi.io"
         : process.env.ETH_TESTNET_RPC_URL || "https://eth-sepolia.public.blastapi.io";
       
-      return new ethers.providers.JsonRpcProvider(rpcUrl);
+      return new ethers.JsonRpcProvider(rpcUrl);
     } catch (error) {
       logger.error("Failed to initialize Ethereum provider:", error.message);
       throw error;
@@ -58,7 +58,9 @@ class EthTransactionListenerService {
         status: "active",
         network: this.network,
         ethAddress: { $exists: true, $ne: null },
-      }).select("ethAddress userId");
+      }).select("ethAddress userId network");
+
+      console.log(wallets);
 
       return wallets.map((wallet) => ({
         ethAddress: wallet.ethAddress,
@@ -375,7 +377,7 @@ const ethTransactionListener = new EthTransactionListenerService();
  * Runs every 2 minutes to check for new incoming ETH transactions
  */
 exports.ethTransactionListenerJob = cron.schedule(
-  "*/2 * * * *",
+  "*/30 * * * * *",
   async () => {
     logger.info("Starting ETH transaction listener job...");
 

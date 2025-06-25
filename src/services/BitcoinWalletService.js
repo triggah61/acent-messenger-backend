@@ -327,7 +327,7 @@ class MultiChainWalletService {
   async getEthereumBalance(address) {
     try {
       console.log("Using Ethereum provider for balance check...");
-      const network = process.env.ETH_NETWORK === "mainnet" ? "mainnet" : "sepolia";
+      const network = process.env.ETH_NETWORK === "mainnet" ? "mainnet" : "testnet";
       const rpcUrl = network === "mainnet" 
         ? process.env.ETH_MAINNET_RPC_URL || "https://eth-mainnet.public.blastapi.io"
         : process.env.ETH_TESTNET_RPC_URL || "https://eth-sepolia.public.blastapi.io";
@@ -1221,7 +1221,7 @@ class MultiChainWalletService {
       const ethPrivateKey = await this.getEthereumPrivateKey(fromWalletId, walletEncryptionKey);
       
       // Setup provider and wallet
-      const network = process.env.ETH_NETWORK === "mainnet" ? "mainnet" : "sepolia";
+      const network = process.env.ETH_NETWORK === "mainnet" ? "mainnet" : "testnet";
       const rpcUrl = network === "mainnet" 
         ? process.env.ETH_MAINNET_RPC_URL || "https://eth-mainnet.public.blastapi.io"
         : process.env.ETH_TESTNET_RPC_URL || "https://eth-sepolia.public.blastapi.io";

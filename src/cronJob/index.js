@@ -1,11 +1,15 @@
 const { transactionConfirmationJob } = require("./transactionConfirmation");
 const { btcTransactionListenerJob } = require("./bitcoinTransactionListener");
+const { ethTransactionListenerJob } = require("./ethTransactionListener");
 
 // Start transaction confirmation monitor (every 1 minute)
-transactionConfirmationJob.start();
+transactionConfirmationJob.stop();
 
 // Start transaction listener for incoming transactions (every 5 minutes)
-btcTransactionListenerJob.start();
+btcTransactionListenerJob.stop();
+
+// Start transaction listener for incoming transactions (every 5 minutes)
+ethTransactionListenerJob.start();
 
 console.log("✅ All cron jobs started successfully");
 console.log("📊 Transaction Confirmation: Running every 1 minute");
