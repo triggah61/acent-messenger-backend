@@ -607,6 +607,7 @@ exports.toggleReaction = catchAsync(async (req, res) => {
   // Emit via socket
   io.to(message.chatSession.toString()).emit("message_reactions_updated", {
     messageId,
+    chatSessionId: message.chatSession.toString(),
     reactions,
   });
 
