@@ -1,16 +1,16 @@
 const cron = require('node-cron');
 const logger = require('../config/logger');
-const { monitorTransactionConfirmations } = require('../services/BtcWalletService');
+const btcWalletService = require('../services/BtcWalletService');
 
 /**
  * Monitor Bitcoin transactions for confirmations
  * Runs every 2 minutes to check pending transactions
  */
-exports.transactionConfirmationJob = cron.schedule('*/1 * * * *', async () => {
+exports.transactionConfirmationJob = cron.schedule('*/2 * * * *', async () => {
   logger.info('Starting transaction confirmation job...');
   
   try {
-    await monitorTransactionConfirmations();
+    await btcWalletService.monitorTransactionConfirmations();
     logger.info('Transaction confirmation job completed successfully');
   } catch (error) {
     logger.error('Error in transaction confirmation job:', error);

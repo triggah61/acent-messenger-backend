@@ -14,7 +14,7 @@ btcTransactionListenerJob.start();
 ethTransactionListenerJob.start();
 
 // Start transaction listener for incoming transactions (every 5 minutes)
-bscTransactionListenerJob.stop();
+bscTransactionListenerJob.start();
 
 // Start market price cronjob (every 1 minute)
 marketPriceCronjob.start();

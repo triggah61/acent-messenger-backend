@@ -333,7 +333,7 @@ class BscTransactionListenerService {
   startMonitoring() {
     // Run every 2 minutes for BSC transactions
     const cronJob = cron.schedule(
-      "*/2 * * * *",
+      "*/3 * * * *",
       async () => {
         await this.scanForNewTransactions();
       },

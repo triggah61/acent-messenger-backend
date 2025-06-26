@@ -333,7 +333,7 @@ class EthTransactionListenerService {
   startMonitoring() {
     // Run every 2 minutes for ETH transactions
     const cronJob = cron.schedule(
-      "*/2 * * * *",
+      "*/3 * * * *",
       async () => {
         await this.scanForNewTransactions();
       },

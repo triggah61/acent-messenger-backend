@@ -322,7 +322,7 @@ class BtcTransactionListenerService {
   startMonitoring() {
     // Run every minute for BTC transactions
     const cronJob = cron.schedule(
-      "* * * * *",
+      "*/3 * * * *",
       async () => {
         await this.scanForNewTransactions();
       },
