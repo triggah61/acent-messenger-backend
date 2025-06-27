@@ -186,7 +186,7 @@ class MultiChainWalletService {
       const hdRoot = bip32.fromSeed(seed);
 
       // Generate addresses for all supported chains
-      const btcData = BtcWalletService.generateAddress(hdRoot);
+      const btcData = BtcWalletService.generateAddress(hdRoot, this.network);
       const ethData = EthWalletService.generateAddress(hdRoot);
       const bscData = BscWalletService.generateAddress(hdRoot);
 
@@ -296,6 +296,7 @@ class MultiChainWalletService {
     priority = "medium",
     description = ""
   ) {
+    
     try {
     const wallet = await Wallet.findById(fromWalletId);
     if (!wallet) {
@@ -313,6 +314,7 @@ class MultiChainWalletService {
       }
 
       const service = this.services[normalizedCurrency];
+
 
       // Get the appropriate private key for the currency
       let privateKey;
@@ -381,7 +383,7 @@ class MultiChainWalletService {
       
       switch (normalizedCurrency) {
         case "BTC":
-          return BtcWalletService.generateAddress(hdRoot).privateKeyWIF;
+          return BtcWalletService.generateAddress(hdRoot, this.network).privateKeyWIF;
         case "ETH":
           return EthWalletService.generateAddress(hdRoot).privateKey;
         case "BNB":

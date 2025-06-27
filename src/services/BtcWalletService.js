@@ -139,21 +139,22 @@ class BtcWalletService {
   /**
    * Generate Bitcoin address from HD wallet
    */
-  generateAddress(hdRoot) {
-    const coinType = this.network === bitcoin.networks.bitcoin ? 0 : 1;
+  static generateAddress(hdRoot, network = null) {
+    const serviceNetwork = network || (process.env.BITCOIN_NETWORK === "mainnet" ? bitcoin.networks.bitcoin : bitcoin.networks.testnet);
+    const coinType = serviceNetwork === bitcoin.networks.bitcoin ? 0 : 1;
     const derivationPath = `m/44'/${coinType}'/0'/0/0`;
     const child = hdRoot.derivePath(derivationPath);
 
     // Generate SegWit address (P2WPKH)
     const { address } = bitcoin.payments.p2wpkh({
       pubkey: child.publicKey,
-      network: this.network,
+      network: serviceNetwork,
     });
 
     return {
       address,
       publicKey: child.publicKey.toString("hex"),
-      privateKeyWIF: child.toWIF(),
+      privateKeyWIF: child.toWIF(serviceNetwork), // Specify network for WIF generation
       derivationPath,
     };
   }
@@ -252,8 +253,72 @@ class BtcWalletService {
     priority = "medium",
     description = ""
   ) {
+
+    console.log("wallet", wallet);
+    console.log("toAddress", toAddress);
+    console.log("amount", amount);
+    console.log("privateKeyWIF", privateKeyWIF);
+    console.log("priority", priority);
+    console.log("description", description);
+    console.log("this.network", this.network);
+
     try {
-      const keyPair = ECPair.fromWIF(privateKeyWIF, this.network);
+      console.log("Network configuration:", this.network);
+      console.log("Private key format check - starts with cT/cR (testnet) or K/L (mainnet):", privateKeyWIF.charAt(0));
+      console.log("Expected network:", this.network === bitcoin.networks.bitcoin ? "mainnet" : "testnet");
+      
+      let keyPair;
+      try {
+        keyPair = ECPair.fromWIF(privateKeyWIF, this.network);
+      } catch (networkError) {
+        console.log("Network version mismatch detected, attempting to fix...");
+        console.log("Original error:", networkError.message);
+        console.log("Private key starts with:", privateKeyWIF.substring(0, 2));
+        console.log("Private key length:", privateKeyWIF.length);
+        
+        // Try to parse with the opposite network and convert
+        const oppositeNetwork = this.network === bitcoin.networks.bitcoin 
+          ? bitcoin.networks.testnet 
+          : bitcoin.networks.bitcoin;
+        
+        try {
+          console.log("Trying with opposite network:", oppositeNetwork === bitcoin.networks.bitcoin ? "mainnet" : "testnet");
+          const tempKeyPair = ECPair.fromWIF(privateKeyWIF, oppositeNetwork);
+          console.log("Successfully parsed with opposite network");
+          
+          // Re-create the WIF with correct network using raw private key
+          const rawPrivateKey = tempKeyPair.privateKey;
+          const newKeyPair = ECPair.fromPrivateKey(rawPrivateKey, { network: this.network });
+          const correctWIF = newKeyPair.toWIF();
+          
+          console.log("Original WIF:", privateKeyWIF.substring(0, 10) + "...");
+          console.log("Corrected WIF:", correctWIF.substring(0, 10) + "...");
+          
+          keyPair = ECPair.fromWIF(correctWIF, this.network);
+          console.log("Successfully created keyPair with corrected WIF");
+          
+          // TODO: Update the wallet with the corrected WIF format
+          console.warn("Wallet has incorrect WIF format for current network. Consider updating the stored private key.");
+        } catch (conversionError) {
+          console.log("Conversion also failed:", conversionError.message);
+          
+          // Last resort: try to parse as a raw private key (hex)
+          try {
+            console.log("Attempting to parse as raw hex private key...");
+            if (privateKeyWIF.length === 64) {
+              // Assume it's a hex private key
+              const privateKeyBuffer = Buffer.from(privateKeyWIF, 'hex');
+              keyPair = ECPair.fromPrivateKey(privateKeyBuffer, { network: this.network });
+              console.log("Successfully parsed as raw hex private key");
+            } else {
+              throw new Error("Not a valid hex private key length");
+            }
+          } catch (hexError) {
+            console.log("Hex parsing also failed:", hexError.message);
+            throw new AppError(`Invalid private key format. Original error: ${networkError.message}. Conversion error: ${conversionError.message}. Hex parsing error: ${hexError.message}`, 400);
+          }
+        }
+      }
 
       // Get UTXOs
       const utxos = await this.getUTXOs(wallet.btcAddress);
@@ -399,10 +464,8 @@ class BtcWalletService {
         success: broadcastResult.success,
       };
     } catch (error) {
-      throw new AppError(
-        `Failed to send Bitcoin transaction: ${error.message}`,
-        500
-      );
+      console.log("error", error);
+      throw new AppError(error.message, 500);
     }
   }
 
