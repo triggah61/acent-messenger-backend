@@ -186,7 +186,10 @@ class MultiChainWalletService {
       const hdRoot = bip32.fromSeed(seed);
 
       // Generate addresses for all supported chains
-      const btcData = BtcWalletService.generateAddress(hdRoot, this.network);
+      const btcData = BtcWalletService.BtcWalletService.generateAddress(
+        hdRoot,
+        this.network
+      );
       const ethData = EthWalletService.generateAddress(hdRoot);
       const bscData = BscWalletService.generateAddress(hdRoot);
 
@@ -200,7 +203,10 @@ class MultiChainWalletService {
         publicKey: btcData.publicKey, // Primary public key (Bitcoin)
         derivationPath: btcData.derivationPath, // Primary derivation path
         walletType: "main",
-        network: BtcWalletService.network === require("bitcoinjs-lib").networks.bitcoin ? "mainnet" : "testnet",
+        network:
+          BtcWalletService.network === require("bitcoinjs-lib").networks.bitcoin
+            ? "mainnet"
+            : "testnet",
         label,
         status: "active",
         balances: {
@@ -238,7 +244,10 @@ class MultiChainWalletService {
         },
       };
     } catch (error) {
-      throw new AppError(`Failed to create multi-chain wallet: ${error.message}`, 500);
+      throw new AppError(
+        `Failed to create multi-chain wallet: ${error.message}`,
+        500
+      );
     }
   }
 
@@ -272,7 +281,7 @@ class MultiChainWalletService {
   async getWalletBalance(address, currency = "BTC") {
     try {
       const normalizedCurrency = currency.toUpperCase();
-      
+
       if (!this.services[normalizedCurrency]) {
         throw new AppError(`Unsupported currency: ${currency}`, 400);
       }
@@ -296,25 +305,23 @@ class MultiChainWalletService {
     priority = "medium",
     description = ""
   ) {
-    
     try {
-    const wallet = await Wallet.findById(fromWalletId);
-    if (!wallet) {
-      throw new AppError("Wallet not found", 404);
-    }
+      const wallet = await Wallet.findById(fromWalletId);
+      if (!wallet) {
+        throw new AppError("Wallet not found", 404);
+      }
 
-    if (wallet.status !== "active") {
-      throw new AppError("Wallet is not active", 400);
-    }
+      if (wallet.status !== "active") {
+        throw new AppError("Wallet is not active", 400);
+      }
 
       const normalizedCurrency = currency.toUpperCase();
-      
+
       if (!this.services[normalizedCurrency]) {
         throw new AppError(`Unsupported currency: ${currency}`, 400);
       }
 
       const service = this.services[normalizedCurrency];
-
 
       // Get the appropriate private key for the currency
       let privateKey;
@@ -322,12 +329,19 @@ class MultiChainWalletService {
         privateKey = wallet.decryptPrivateKey(walletEncryptionKey);
       } else {
         // For ETH and BSC, derive from mnemonic
-        privateKey = await this.getPrivateKeyForCurrency(wallet, normalizedCurrency, walletEncryptionKey);
+        privateKey = await this.getPrivateKeyForCurrency(
+          wallet,
+          normalizedCurrency,
+          walletEncryptionKey
+        );
       }
 
       // Validate the destination address
       if (!service.validateAddress(toAddress)) {
-        throw new AppError(`Invalid ${normalizedCurrency} address: ${toAddress}`, 400);
+        throw new AppError(
+          `Invalid ${normalizedCurrency} address: ${toAddress}`,
+          400
+        );
       }
 
       // Send transaction using the appropriate service
@@ -355,18 +369,21 @@ class MultiChainWalletService {
         // BSC service expects: wallet, toAddress, amount, privateKey, gasPrice, description, priority
         return await service.sendTransaction(
           wallet,
-      toAddress,
-      amount,
+          toAddress,
+          amount,
           privateKey,
           null, // gasPrice - let service estimate
-      description,
+          description,
           priority
         );
-    } else {
+      } else {
         throw new AppError(`Unsupported currency: ${currency}`, 400);
       }
     } catch (error) {
-      throw new AppError(`Failed to send ${currency} transaction: ${error.message}`, 500);
+      throw new AppError(
+        `Failed to send ${currency} transaction: ${error.message}`,
+        500
+      );
     }
   }
 
@@ -380,10 +397,11 @@ class MultiChainWalletService {
       const hdRoot = bip32.fromSeed(seed);
 
       const normalizedCurrency = currency.toUpperCase();
-      
+
       switch (normalizedCurrency) {
         case "BTC":
-          return BtcWalletService.generateAddress(hdRoot, this.network).privateKeyWIF;
+          return BtcWalletService.generateAddress(hdRoot, this.network)
+            .privateKeyWIF;
         case "ETH":
           return EthWalletService.generateAddress(hdRoot).privateKey;
         case "BNB":
@@ -393,7 +411,10 @@ class MultiChainWalletService {
           throw new AppError(`Unsupported currency: ${currency}`, 400);
       }
     } catch (error) {
-      throw new AppError(`Failed to get private key for ${currency}: ${error.message}`, 500);
+      throw new AppError(
+        `Failed to get private key for ${currency}: ${error.message}`,
+        500
+      );
     }
   }
 
@@ -403,7 +424,7 @@ class MultiChainWalletService {
   validateAddress(address, currency = "auto") {
     if (currency === "auto") {
       // Auto-detect currency type
-      return this.supportedCurrencies.some(curr => 
+      return this.supportedCurrencies.some((curr) =>
         this.services[curr].validateAddress(address)
       );
     }
@@ -421,16 +442,22 @@ class MultiChainWalletService {
    */
   async monitorTransactionConfirmations() {
     try {
-      const monitoringPromises = this.supportedCurrencies.map(currency => {
+      const monitoringPromises = this.supportedCurrencies.map((currency) => {
         const service = this.services[currency];
-        return service.monitorTransactionConfirmations().catch(error => {
-          console.error(`Error monitoring ${currency} transactions:`, error.message);
+        return service.monitorTransactionConfirmations().catch((error) => {
+          console.error(
+            `Error monitoring ${currency} transactions:`,
+            error.message
+          );
         });
       });
 
       await Promise.all(monitoringPromises);
     } catch (error) {
-      console.error("Error in multi-chain transaction monitoring:", error.message);
+      console.error(
+        "Error in multi-chain transaction monitoring:",
+        error.message
+      );
     }
   }
 
@@ -440,7 +467,7 @@ class MultiChainWalletService {
   async getTransactionDetails(txHash, currency) {
     try {
       const normalizedCurrency = currency.toUpperCase();
-      
+
       if (!this.services[normalizedCurrency]) {
         throw new AppError(`Unsupported currency: ${currency}`, 400);
       }
@@ -448,7 +475,10 @@ class MultiChainWalletService {
       const service = this.services[normalizedCurrency];
       return await service.getTransactionDetails(txHash);
     } catch (error) {
-      throw new AppError(`Failed to get transaction details: ${error.message}`, 500);
+      throw new AppError(
+        `Failed to get transaction details: ${error.message}`,
+        500
+      );
     }
   }
 
@@ -467,16 +497,16 @@ class MultiChainWalletService {
       });
 
       const results = await Promise.all(testPromises);
-      
-      const allSuccessful = results.every(result => result.success);
-      
+
+      const allSuccessful = results.every((result) => result.success);
+
       return {
         success: allSuccessful,
         services: results,
         summary: {
           total: results.length,
-          successful: results.filter(r => r.success).length,
-          failed: results.filter(r => !r.success).length,
+          successful: results.filter((r) => r.success).length,
+          failed: results.filter((r) => !r.success).length,
         },
       };
     } catch (error) {
@@ -505,7 +535,6 @@ class MultiChainWalletService {
     }
     return this.services[normalizedCurrency];
   }
-
 }
 
 module.exports = new MultiChainWalletService();
