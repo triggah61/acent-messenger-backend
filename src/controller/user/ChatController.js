@@ -405,40 +405,31 @@ exports.sendMessage = catchAsync(async (req, res) => {
     .populate("replyTo", "content")
     .lean();
 
-  // IMPROVED: Better message broadcasting for real-time sync
+  // FIXED: Proper message broadcasting to prevent duplicates
   
-  // 1. Emit to all users in the chat session (including sender for message echo)
-  io.to(chatSessionId).emit("new_message", {
-    ...messageInfo,
-    isOwnMessage: false // Default value, will be updated per recipient
-  });
+  // 1. Emit to chat session room (this includes sender and all participants)
+  io.to(chatSessionId).emit("new_message", messageInfo);
 
-  // 2. Emit to sender's personal room with isOwnMessage flag
-  io.to(`user_${user._id}`).emit("new_message", {
-    ...messageInfo,
-    isOwnMessage: true
-  });
-
-  // 3. Emit global new message to all recipients' personal rooms
+  // 2. Emit global new message ONLY to OTHER recipients (not sender)
+  // This prevents sender from getting the message twice
   for (const recipient of chatSession.receipients) {
     const recipientId = recipient.user.toString();
-    const isOwnMessage = recipientId === user._id.toString();
+    const isMessageSender = recipientId === user._id.toString();
     
-    io.to(`user_${recipientId}`).emit("global_new_message", {
-      ...messageInfo,
-      isOwnMessage
-    });
+    // Only send to recipients who are NOT the sender
+    if (!isMessageSender) {
+      io.to(`user_${recipientId}`).emit("global_new_message", messageInfo);
+    }
   }
 
-  // 4. Additional broadcast to ensure message reaches all connected clients
-  // This helps with connection sync issues
+  // 3. Message sync event for connection stability (after small delay)
   setTimeout(() => {
     io.to(chatSessionId).emit("message_sync", {
       messageId: messageInfo._id,
       chatSessionId,
       timestamp: new Date().toISOString()
     });
-  }, 100); // Small delay to ensure message is processed
+  }, 100);
 
   // Send FCM push notifications to recipients (excluding sender)
   try {
