@@ -60,12 +60,16 @@ exports.findChatSessionByReceipient = catchAsync(async (req, res) => {
       )
       .lean();
 
-    io.local.emit(
-      "new_chat_session",
-      newChatSession.receipients?.map((receipient) => {
-        return receipient.user?._id ?? null;
-      })
-    );
+      // Emit new chat session to all recipients' personal rooms
+  for (const recipient of newChatSession.receipients) {
+    const recipientId = recipient.user?._id?.toString();
+    if (recipientId) {
+      io.to(`user_${recipientId}`).emit("new_chat_session", {
+        chatSession: newChatSession,
+        timestamp: new Date().toISOString()
+      });
+    }
+  }
 
     let otherUser =
       newChatSession.receipients.find(
@@ -155,12 +159,16 @@ exports.createChatSession = catchAsync(async (req, res) => {
   chatSession.photo =
     chatSession.type === "personal" ? otherUser.photo : chatSession.photo;
 
-  io.local.emit(
-    "new_chat_session",
-    chatSession.receipients?.map((receipient) => {
-      return receipient.user?._id ?? null;
-    })
-  );
+  // Emit new chat session to all recipients' personal rooms
+  for (const recipient of chatSession.receipients) {
+    const recipientId = recipient.user?._id?.toString();
+    if (recipientId) {
+      io.to(`user_${recipientId}`).emit("new_chat_session", {
+        chatSession: chatSession,
+        timestamp: new Date().toISOString()
+      });
+    }
+  }
 
   return res.status(200).json({
     message: "Chat session created successfully",
@@ -397,12 +405,40 @@ exports.sendMessage = catchAsync(async (req, res) => {
     .populate("replyTo", "content")
     .lean();
 
-  // Emit socket events
-  io.to(chatSessionId).emit("new_message", messageInfo);
+  // IMPROVED: Better message broadcasting for real-time sync
+  
+  // 1. Emit to all users in the chat session (including sender for message echo)
+  io.to(chatSessionId).emit("new_message", {
+    ...messageInfo,
+    isOwnMessage: false // Default value, will be updated per recipient
+  });
 
+  // 2. Emit to sender's personal room with isOwnMessage flag
+  io.to(`user_${user._id}`).emit("new_message", {
+    ...messageInfo,
+    isOwnMessage: true
+  });
+
+  // 3. Emit global new message to all recipients' personal rooms
   for (const recipient of chatSession.receipients) {
-    io.to(`user_${recipient.user}`).emit("global_new_message", messageInfo);
+    const recipientId = recipient.user.toString();
+    const isOwnMessage = recipientId === user._id.toString();
+    
+    io.to(`user_${recipientId}`).emit("global_new_message", {
+      ...messageInfo,
+      isOwnMessage
+    });
   }
+
+  // 4. Additional broadcast to ensure message reaches all connected clients
+  // This helps with connection sync issues
+  setTimeout(() => {
+    io.to(chatSessionId).emit("message_sync", {
+      messageId: messageInfo._id,
+      chatSessionId,
+      timestamp: new Date().toISOString()
+    });
+  }, 100); // Small delay to ensure message is processed
 
   // Send FCM push notifications to recipients (excluding sender)
   try {

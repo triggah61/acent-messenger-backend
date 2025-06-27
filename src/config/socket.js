@@ -19,6 +19,8 @@ const User = require("../model/User");
 const userConnections = new Map();
 // Track socket to user mapping: socketId -> userId
 const socketUserMap = new Map();
+// Track active chat rooms for each user: userId -> Set of chatSessionIds
+const userChatRooms = new Map();
 
 /**
  * Initialize Socket.IO server and configure event handlers
@@ -35,9 +37,13 @@ const initSocketServer = (server) => {
       transports: ["websocket", "polling"],
       credentials: false,
     },
-    // Add ping/pong configuration for connection health
-    pingTimeout: 60000,
+    // Improved ping/pong configuration for better connection health
+    pingTimeout: 90000, // Increased timeout to handle network issues
     pingInterval: 25000,
+    // Allow more time for connections to stabilize
+    connectTimeout: 45000,
+    // Increase buffer size for better message handling
+    maxHttpBufferSize: 1e6,
   });
 
   // Socket.IO middleware for authentication
@@ -108,6 +114,19 @@ const initSocketServer = (server) => {
     userConnections.get(userId).add(socket.id);
     socketUserMap.set(socket.id, userId);
 
+    // Initialize user's chat rooms tracking
+    if (!userChatRooms.has(userId)) {
+      userChatRooms.set(userId, new Set());
+    }
+
+    // IMPORTANT: Automatically join user's personal room on connection
+    const personalRoomName = `user_${userId}`;
+    socket.join(personalRoomName);
+    console.log(`User ${userId} automatically joined personal room: ${personalRoomName}`);
+
+    // Emit confirmation to client
+    socket.emit("joined_user_room", { userId, roomName: personalRoomName });
+
     // Handle disconnection
     socket.on("disconnect", (reason) => {
       console.log(`Socket disconnected for user: ${userId}, socket: ${socket.id}, reason: ${reason}`);
@@ -117,6 +136,7 @@ const initSocketServer = (server) => {
         userConnections.get(userId).delete(socket.id);
         if (userConnections.get(userId).size === 0) {
           userConnections.delete(userId);
+          userChatRooms.delete(userId); // Clean up chat rooms tracking
           console.log(`All connections closed for user: ${userId}`);
           
           // Broadcast user offline status
@@ -128,8 +148,7 @@ const initSocketServer = (server) => {
       }
       socketUserMap.delete(socket.id);
       
-      // Automatically leave all rooms (socket.io handles this, but we log it)
-      console.log(`Socket ${socket.id} left all rooms due to disconnect`);
+      console.log(`Socket ${socket.id} cleanup completed`);
     });
 
     // Handle connection errors
@@ -149,7 +168,7 @@ const initSocketServer = (server) => {
       socket.emit("pong", { userId, timestamp: new Date().toISOString() });
     });
 
-    // Handle user joining their personal room
+    // Handle user joining their personal room (redundant now but kept for compatibility)
     socket.on("join_user_room", (requestedUserId) => {
       // Security check: only allow joining own room
       if (requestedUserId !== userId) {
@@ -159,7 +178,7 @@ const initSocketServer = (server) => {
       
       const roomName = `user_${userId}`;
       socket.join(roomName);
-      console.log(`User ${userId} joined their personal room: ${roomName}`);
+      console.log(`User ${userId} manually joined their personal room: ${roomName}`);
       
       // Confirm to client
       socket.emit("joined_user_room", { userId, roomName });
@@ -184,45 +203,76 @@ const initSocketServer = (server) => {
     // Handle joining chat sessions
     socket.on("join_chat", (chatSessionId) => {
       console.log(`User ${userId} joining chat: ${chatSessionId}`);
+      
+      // Add validation
+      if (!chatSessionId || typeof chatSessionId !== 'string') {
+        console.warn(`Invalid chatSessionId provided: ${chatSessionId}`);
+        return;
+      }
+      
       socket.join(chatSessionId);
-      socket.emit("joined_chat", { chatSessionId });
+      
+      // Track user's active chat rooms
+      userChatRooms.get(userId).add(chatSessionId);
+      
+      socket.emit("joined_chat", { chatSessionId, userId });
+      console.log(`User ${userId} successfully joined chat room: ${chatSessionId}`);
     });
 
     // Handle leaving chat sessions
     socket.on("leave_chat", (chatSessionId) => {
       console.log(`User ${userId} leaving chat: ${chatSessionId}`);
+      
+      if (!chatSessionId || typeof chatSessionId !== 'string') {
+        console.warn(`Invalid chatSessionId provided for leave: ${chatSessionId}`);
+        return;
+      }
+      
       socket.leave(chatSessionId);
-      socket.emit("left_chat", { chatSessionId });
+      
+      // Remove from user's active chat rooms
+      if (userChatRooms.has(userId)) {
+        userChatRooms.get(userId).delete(chatSessionId);
+      }
+      
+      socket.emit("left_chat", { chatSessionId, userId });
+      console.log(`User ${userId} successfully left chat room: ${chatSessionId}`);
     });
 
-    // Handle typing indicators
-    // socket.on("typing", (data) => {
-    //   console.log(`Typing event from user ${userId}:`, data);
-    //   if (data && data.chatSessionId) {
-    //     // Broadcast to all users in the chat session except sender
-    //     socket.to(data.chatSessionId).emit("typing_start", {
-    //       userId: userId,
-    //       chatSessionId: data.chatSessionId,
-    //       timestamp: new Date().toISOString(),
-    //     });
-    //   }
-    // });
+    // Handle typing indicators - FIXED AND ENABLED
+    socket.on("typing", (data) => {
+      console.log(`Typing event from user ${userId}:`, data);
+      if (data && data.chatSessionId) {
+        // Broadcast to all users in the chat session except sender
+        socket.to(data.chatSessionId).emit("typing_start", {
+          userId: userId,
+          chatSessionId: data.chatSessionId,
+          timestamp: new Date().toISOString(),
+          user: {
+            id: userId,
+            firstName: socket.user.firstName,
+            lastName: socket.user.lastName
+          }
+        });
+      }
+    });
 
-    // socket.on("stop_typing", (data) => {
-    //   console.log(`Stop typing event from user ${userId}:`, data);
-    //   if (data && data.chatSessionId) {
-    //     // Broadcast to all users in the chat session except sender
-    //     socket.to(data.chatSessionId).emit("stop_typing", {
-    //       userId: userId,
-    //       chatSessionId: data.chatSessionId,
-    //       timestamp: new Date().toISOString(),
-    //     });
-    //   }
-    // });
+    socket.on("stop_typing", (data) => {
+      console.log(`Stop typing event from user ${userId}:`, data);
+      if (data && data.chatSessionId) {
+        // Broadcast to all users in the chat session except sender
+        socket.to(data.chatSessionId).emit("stop_typing", {
+          userId: userId,
+          chatSessionId: data.chatSessionId,
+          timestamp: new Date().toISOString(),
+        });
+      }
+    });
 
     // Handle message delivery status
     socket.on("message_delivered", async (data) => {
       if (data && data.messageId && data.senderId) {
+        console.log(`Message ${data.messageId} delivered to user ${userId}`);
         io.to(`user_${data.senderId}`).emit("message_delivered", {
           messageId: data.messageId,
           userId: userId,
@@ -231,7 +281,7 @@ const initSocketServer = (server) => {
       }
     });
 
-    // Handle global typing indicators
+    // Handle global typing indicators - IMPROVED
     socket.on("global_typing_indicator", (data) => {
       console.log(`Global typing indicator from user ${userId}:`, data);
       if (data && data.chatSessionId) {
@@ -241,6 +291,11 @@ const initSocketServer = (server) => {
           chatSessionId: data.chatSessionId,
           isTyping: data.isTyping,
           timestamp: new Date().toISOString(),
+          user: {
+            id: userId,
+            firstName: socket.user.firstName,
+            lastName: socket.user.lastName
+          }
         });
       }
     });
@@ -271,6 +326,31 @@ const initSocketServer = (server) => {
         });
       }
     });
+
+    // Handle reconnection - rejoin rooms
+    socket.on("rejoin_rooms", async (data) => {
+      console.log(`User ${userId} requesting to rejoin rooms:`, data);
+      
+      // Ensure user is in their personal room
+      const personalRoomName = `user_${userId}`;
+      socket.join(personalRoomName);
+      
+      // Rejoin chat sessions if provided
+      if (data && data.chatSessions && Array.isArray(data.chatSessions)) {
+        for (const chatSessionId of data.chatSessions) {
+          if (chatSessionId && typeof chatSessionId === 'string') {
+            socket.join(chatSessionId);
+            userChatRooms.get(userId).add(chatSessionId);
+            console.log(`User ${userId} rejoined chat room: ${chatSessionId}`);
+          }
+        }
+      }
+      
+      socket.emit("rooms_rejoined", {
+        personalRoom: personalRoomName,
+        chatSessions: data?.chatSessions || []
+      });
+    });
   });
 
   // Add helper function to get user connection count
@@ -281,6 +361,11 @@ const initSocketServer = (server) => {
   // Add helper function to check if user is online
   global.isUserOnline = (userId) => {
     return userConnections.has(userId) && userConnections.get(userId).size > 0;
+  };
+
+  // Add helper function to get user's active chat rooms
+  global.getUserChatRooms = (userId) => {
+    return userChatRooms.has(userId) ? Array.from(userChatRooms.get(userId)) : [];
   };
 
   // Add helper function to disconnect all user sessions (for admin use)
@@ -297,7 +382,7 @@ const initSocketServer = (server) => {
     }
   };
 
-  // Periodic cleanup of stale connections (every 5 minutes)
+  // Periodic cleanup of stale connections (every 3 minutes - reduced frequency)
   setInterval(() => {
     console.log(`Active user connections: ${userConnections.size}`);
     console.log(`Active socket connections: ${io.engine.clientsCount}`);
@@ -311,11 +396,12 @@ const initSocketServer = (server) => {
           userConnections.get(userId).delete(socketId);
           if (userConnections.get(userId).size === 0) {
             userConnections.delete(userId);
+            userChatRooms.delete(userId);
           }
         }
       }
     }
-  }, 5 * 60 * 1000); // 5 minutes
+  }, 3 * 60 * 1000); // 3 minutes
 
   return io;
 };
