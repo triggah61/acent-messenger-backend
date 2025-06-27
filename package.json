@@ -26,6 +26,7 @@
     "express-rate-limit": "^7.5.0",
     "express-useragent": "^1.0.15",
     "express-validator": "^7.0.1",
+    "firebase-admin": "^13.4.0",
     "form-data": "^4.0.0",
     "jsonwebtoken": "^9.0.2",
     "moment": "^2.30.1",

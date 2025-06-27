@@ -8,6 +8,8 @@ const Message = require("../../model/Message");
 const User = require("../../model/User");
 const SimpleValidator = require("../../validator/simpleValidator");
 const { getFormattedReactions } = require("../../services/ChatService");
+const FCMService = require("../../services/FCMService");
+
 exports.findChatSessionByReceipient = catchAsync(async (req, res) => {
   const { user } = req;
   const { receipientId } = req.params;
@@ -395,10 +397,58 @@ exports.sendMessage = catchAsync(async (req, res) => {
     .populate("replyTo", "content")
     .lean();
 
+  // Emit socket events
   io.to(chatSessionId).emit("new_message", messageInfo);
 
   for (const recipient of chatSession.receipients) {
     io.to(`user_${recipient.user}`).emit("global_new_message", messageInfo);
+  }
+
+  // Send FCM push notifications to recipients (excluding sender)
+  try {
+    const recipientIds = chatSession.receipients
+      .filter(recipient => recipient.user.toString() !== user._id.toString())
+      .map(recipient => recipient.user.toString());
+
+    if (recipientIds.length > 0) {
+      // Prepare sender data for notification
+      const senderData = {
+        _id: user._id,
+        firstName: user.firstName,
+        lastName: user.lastName,
+      };
+
+      if (chatSession.type === 'group') {
+        // Send group message notification
+        const groupData = {
+          _id: chatSession._id,
+          title: chatSession.title,
+        };
+        
+        FCMService.sendGroupMessageNotification(
+          recipientIds,
+          messageInfo,
+          senderData,
+          groupData
+        ).catch(error => {
+          console.error('FCM: Error sending group message notification:', error);
+        });
+      } else {
+        // Send personal message notification to each recipient
+        for (const recipientId of recipientIds) {
+          FCMService.sendNewMessageNotification(
+            recipientId,
+            messageInfo,
+            senderData
+          ).catch(error => {
+            console.error(`FCM: Error sending message notification to ${recipientId}:`, error);
+          });
+        }
+      }
+    }
+  } catch (error) {
+    console.error('FCM: Error in sendMessage notification process:', error);
+    // Don't throw error here - message was sent successfully, just notification failed
   }
 
   return res.status(200).json({

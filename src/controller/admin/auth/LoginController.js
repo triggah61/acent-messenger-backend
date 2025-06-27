@@ -27,6 +27,7 @@ const {
 } = require("../../../services/OtpVerificationService");
 const Wallet = require("../../../model/Wallet");
 const MultiChainWalletService = require("../../../services/MultiChainWalletService");
+const FCMService = require("../../../services/FCMService");
 
 /**
  * Handles user login
@@ -87,18 +88,24 @@ exports.login = catchAsync(async (req, res) => {
  * Verifies the OTP for two-factor authentication
  *
  * This function validates the OTP provided by the user for 2FA login.
+ * It also handles FCM token registration if provided.
  *
  * @function verifyLoginWithOTP
  * @async
  * @param {Object} req - Express request object
  * @param {Object} req.body - Request body
+ * @param {string} req.body.fcmToken - FCM token for push notifications (optional)
+ * @param {string} req.body.platform - Platform (android/ios/web) (optional)
+ * @param {string} req.body.deviceId - Device identifier (optional)
  * @param {Object} res - Express response object
  * @returns {Promise<void>} Sends a JSON response with authentication result
  * @throws {AppError} If validation fails or OTP verification is unsuccessful
  */
 exports.verifyLoginWithOTP = catchAsync(async (req, res) => {
-  let { trace } = req.body;
+  let { trace, fcmToken, platform, deviceId } = req.body;
   let { phone, dialCode } = trace.data;
+
+  console.log("req.body", req.body);
 
   let user = await User.findOne({ phone });
   if (!user) {
@@ -108,6 +115,22 @@ exports.verifyLoginWithOTP = catchAsync(async (req, res) => {
   let checkWallet = await Wallet.findOne({ userId: user._id });
   if (!checkWallet) {
     await MultiChainWalletService.createWallet(user._id, "Main Wallet");
+  }
+
+  // Register FCM token if provided
+  if (fcmToken && platform) {
+    try {
+      console.log(`LoginController: Registering FCM token for user ${user._id}, platform: ${platform}`);
+      const fcmSuccess = await FCMService.addUserToken(user._id, fcmToken, platform, deviceId);
+      if (fcmSuccess) {
+        console.log(`LoginController: FCM token registered successfully for user ${user._id}`);
+      } else {
+        console.log(`LoginController: Failed to register FCM token for user ${user._id}`);
+      }
+    } catch (error) {
+      console.error(`LoginController: Error registering FCM token for user ${user._id}:`, error);
+      // Don't fail the login if FCM registration fails
+    }
   }
 
   // Generate the final JWT token

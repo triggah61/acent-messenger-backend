@@ -257,7 +257,7 @@ const initSocketServer = (server) => {
         });
       }
     });
-
+    
     // Handle mark message as read
     socket.on("mark_message_read", (data) => {
       console.log(`Message read by user ${userId}:`, data);

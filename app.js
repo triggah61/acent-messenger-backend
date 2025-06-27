@@ -26,6 +26,10 @@ redisConfig.connect().catch(error => {
   console.log("Application will continue without Redis caching");
 });
 
+// Initialize FCM service
+const FCMService = require("./src/services/FCMService");
+console.log("FCM Service initialized:", FCMService.getStatus());
+
 if (process.env.RUN_SCHEDULER === "yes") {
   console.log("Scheduler is enabled!");
   require("./src/cronJob");

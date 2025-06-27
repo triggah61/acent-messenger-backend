@@ -52,6 +52,59 @@ const schema = new Schema(
       default: null,
     },
 
+    // FCM (Firebase Cloud Messaging) tokens for push notifications
+    fcmTokens: [
+      {
+        token: {
+          type: String,
+          required: true,
+        },
+        platform: {
+          type: String,
+          enum: ["android", "ios", "web"],
+          required: true,
+        },
+        deviceId: {
+          type: String,
+          default: null,
+        },
+        isActive: {
+          type: Boolean,
+          default: true,
+        },
+        lastUsed: {
+          type: Date,
+          default: Date.now,
+        },
+      },
+    ],
+    // Notification preferences
+    notificationSettings: {
+      enabled: {
+        type: Boolean,
+        default: true,
+      },
+      messageNotifications: {
+        type: Boolean,
+        default: true,
+      },
+      callNotifications: {
+        type: Boolean,
+        default: true,
+      },
+      groupNotifications: {
+        type: Boolean,
+        default: true,
+      },
+      sound: {
+        type: Boolean,
+        default: true,
+      },
+      vibration: {
+        type: Boolean,
+        default: true,
+      },
+    },
     contacts: [
       {
         type: Schema.Types.ObjectId,
