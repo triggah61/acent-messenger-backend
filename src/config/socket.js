@@ -196,29 +196,29 @@ const initSocketServer = (server) => {
     });
 
     // Handle typing indicators
-    socket.on("typing", (data) => {
-      console.log(`Typing event from user ${userId}:`, data);
-      if (data && data.chatSessionId) {
-        // Broadcast to all users in the chat session except sender
-        socket.to(data.chatSessionId).emit("typing_start", {
-          userId: userId,
-          chatSessionId: data.chatSessionId,
-          timestamp: new Date().toISOString(),
-        });
-      }
-    });
+    // socket.on("typing", (data) => {
+    //   console.log(`Typing event from user ${userId}:`, data);
+    //   if (data && data.chatSessionId) {
+    //     // Broadcast to all users in the chat session except sender
+    //     socket.to(data.chatSessionId).emit("typing_start", {
+    //       userId: userId,
+    //       chatSessionId: data.chatSessionId,
+    //       timestamp: new Date().toISOString(),
+    //     });
+    //   }
+    // });
 
-    socket.on("stop_typing", (data) => {
-      console.log(`Stop typing event from user ${userId}:`, data);
-      if (data && data.chatSessionId) {
-        // Broadcast to all users in the chat session except sender
-        socket.to(data.chatSessionId).emit("stop_typing", {
-          userId: userId,
-          chatSessionId: data.chatSessionId,
-          timestamp: new Date().toISOString(),
-        });
-      }
-    });
+    // socket.on("stop_typing", (data) => {
+    //   console.log(`Stop typing event from user ${userId}:`, data);
+    //   if (data && data.chatSessionId) {
+    //     // Broadcast to all users in the chat session except sender
+    //     socket.to(data.chatSessionId).emit("stop_typing", {
+    //       userId: userId,
+    //       chatSessionId: data.chatSessionId,
+    //       timestamp: new Date().toISOString(),
+    //     });
+    //   }
+    // });
 
     // Handle message delivery status
     socket.on("message_delivered", async (data) => {
