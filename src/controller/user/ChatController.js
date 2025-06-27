@@ -60,16 +60,13 @@ exports.findChatSessionByReceipient = catchAsync(async (req, res) => {
       )
       .lean();
 
-      // Emit new chat session to all recipients' personal rooms
-  for (const recipient of newChatSession.receipients) {
-    const recipientId = recipient.user?._id?.toString();
-    if (recipientId) {
-      io.to(`user_${recipientId}`).emit("new_chat_session", {
-        chatSession: newChatSession,
-        timestamp: new Date().toISOString()
-      });
-    }
-  }
+    // Emit to each recipient's personal room
+    newChatSession.receipients?.forEach((recipient) => {
+      if (recipient.user?._id) {
+        io.to(`user_${recipient.user._id}`).emit("new_chat_session", newChatSession);
+        console.log(`Emitted new_chat_session to user_${recipient.user._id}`);
+      }
+    });
 
     let otherUser =
       newChatSession.receipients.find(
@@ -159,16 +156,13 @@ exports.createChatSession = catchAsync(async (req, res) => {
   chatSession.photo =
     chatSession.type === "personal" ? otherUser.photo : chatSession.photo;
 
-  // Emit new chat session to all recipients' personal rooms
-  for (const recipient of chatSession.receipients) {
-    const recipientId = recipient.user?._id?.toString();
-    if (recipientId) {
-      io.to(`user_${recipientId}`).emit("new_chat_session", {
-        chatSession: chatSession,
-        timestamp: new Date().toISOString()
-      });
+  // Emit to each recipient's personal room
+  chatSession.receipients?.forEach((recipient) => {
+    if (recipient.user?._id) {
+      io.to(`user_${recipient.user._id}`).emit("new_chat_session", chatSession);
+      console.log(`Emitted new_chat_session to user_${recipient.user._id}`);
     }
-  }
+  });
 
   return res.status(200).json({
     message: "Chat session created successfully",
@@ -363,7 +357,7 @@ exports.sendMessage = catchAsync(async (req, res) => {
   // Check if the user is a recipient of the chat session
   if (
     !chatSession.receipients.some(
-      (receipient) => receipient.user.toString() !== user._id.toString()
+      (receipient) => receipient.user.toString() === user._id.toString()
     )
   ) {
     throw new AppError(
@@ -405,31 +399,18 @@ exports.sendMessage = catchAsync(async (req, res) => {
     .populate("replyTo", "content")
     .lean();
 
-  // FIXED: Proper message broadcasting to prevent duplicates
-  
-  // 1. Emit to chat session room (this includes sender and all participants)
+  // Enhanced socket event emission
+  console.log(`Emitting new_message to chat session: ${chatSessionId}`);
   io.to(chatSessionId).emit("new_message", messageInfo);
 
-  // 2. Emit global new message ONLY to OTHER recipients (not sender)
-  // This prevents sender from getting the message twice
+  // Emit to each recipient's personal room for global message notifications
   for (const recipient of chatSession.receipients) {
-    const recipientId = recipient.user.toString();
-    const isMessageSender = recipientId === user._id.toString();
-    
-    // Only send to recipients who are NOT the sender
-    if (!isMessageSender) {
-      io.to(`user_${recipientId}`).emit("global_new_message", messageInfo);
+    if (recipient.user) {
+      const userRoom = `user_${recipient.user}`;
+      io.to(userRoom).emit("global_new_message", messageInfo);
+      console.log(`Emitted global_new_message to ${userRoom}`);
     }
   }
-
-  // 3. Message sync event for connection stability (after small delay)
-  setTimeout(() => {
-    io.to(chatSessionId).emit("message_sync", {
-      messageId: messageInfo._id,
-      chatSessionId,
-      timestamp: new Date().toISOString()
-    });
-  }, 100);
 
   // Send FCM push notifications to recipients (excluding sender)
   try {
