@@ -4,7 +4,9 @@ const configRouter = require("./api/admin/config");
 const profileRouter = require("./api/admin/profile");
 const userRouter = require("./api/user");
 const adminRouter = require("./api/admin");
+const pusherRouter = require("./api/pusher");
 const Wallet = require("../model/Wallet");
+const Authenticated = require("../middleware/Authenticated");
 const { triggerBtcScan } = require("../cronJob/bitcoinTransactionListener");
 const router = require("express").Router();
 require("express-group-routes");
@@ -14,6 +16,7 @@ router.group("/api", (api) => {
   api.use(profileRouter);
   api.use(adminRouter);
   api.use(userRouter);
+  api.use("/pusher",  pusherRouter);
 
   api.get(
     "/test",

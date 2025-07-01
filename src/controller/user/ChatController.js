@@ -9,6 +9,11 @@ const User = require("../../model/User");
 const SimpleValidator = require("../../validator/simpleValidator");
 const { getFormattedReactions } = require("../../services/ChatService");
 const FCMService = require("../../services/FCMService");
+const { 
+  sendNewChatSession, 
+  sendMessageToChat, 
+  sendMessageReactionsUpdate 
+} = require("../../config/pusher");
 
 exports.findChatSessionByReceipient = catchAsync(async (req, res) => {
   const { user } = req;
@@ -60,13 +65,13 @@ exports.findChatSessionByReceipient = catchAsync(async (req, res) => {
       )
       .lean();
 
-    // Emit to each recipient's personal room
-    newChatSession.receipients?.forEach((recipient) => {
+    // Emit to each recipient's personal room using Pusher
+    for (const recipient of newChatSession.receipients || []) {
       if (recipient.user?._id) {
-        io.to(`user_${recipient.user._id}`).emit("new_chat_session", newChatSession);
+        await sendNewChatSession(recipient.user._id.toString(), newChatSession);
         console.log(`Emitted new_chat_session to user_${recipient.user._id}`);
       }
-    });
+    }
 
     let otherUser =
       newChatSession.receipients.find(
@@ -156,13 +161,13 @@ exports.createChatSession = catchAsync(async (req, res) => {
   chatSession.photo =
     chatSession.type === "personal" ? otherUser.photo : chatSession.photo;
 
-  // Emit to each recipient's personal room
-  chatSession.receipients?.forEach((recipient) => {
+  // Emit to each recipient's personal room using Pusher
+  for (const recipient of chatSession.receipients || []) {
     if (recipient.user?._id) {
-      io.to(`user_${recipient.user._id}`).emit("new_chat_session", chatSession);
+      await sendNewChatSession(recipient.user._id.toString(), chatSession);
       console.log(`Emitted new_chat_session to user_${recipient.user._id}`);
     }
-  });
+  }
 
   return res.status(200).json({
     message: "Chat session created successfully",
@@ -399,18 +404,21 @@ exports.sendMessage = catchAsync(async (req, res) => {
     .populate("replyTo", "content")
     .lean();
 
-  // Enhanced socket event emission
+  // Enhanced Pusher event emission with participants data
   console.log(`Emitting new_message to chat session: ${chatSessionId}`);
-  io.to(chatSessionId).emit("new_message", messageInfo);
-
-  // Emit to each recipient's personal room for global message notifications
-  for (const recipient of chatSession.receipients) {
-    if (recipient.user) {
-      const userRoom = `user_${recipient.user}`;
-      io.to(userRoom).emit("global_new_message", messageInfo);
-      console.log(`Emitted global_new_message to ${userRoom}`);
-    }
-  }
+  
+  // Add participants data for global event broadcasting
+  const messageDataWithParticipants = {
+    ...messageInfo,
+    participants: chatSession.receipients.map(recipient => ({
+      user: {
+        _id: recipient.user.toString()
+      }
+    }))
+  };
+  
+  await sendMessageToChat(chatSessionId, messageDataWithParticipants);
+  console.log(`Emitted new_message and global_new_message via Pusher to ${chatSession.receipients.length} participants`);
 
   // Send FCM push notifications to recipients (excluding sender)
   try {
@@ -450,7 +458,7 @@ exports.sendMessage = catchAsync(async (req, res) => {
             senderData
           ).catch(error => {
             console.error(`FCM: Error sending message notification to ${recipientId}:`, error);
-          });
+          });  
         }
       }
     }
@@ -662,8 +670,8 @@ exports.toggleReaction = catchAsync(async (req, res) => {
   // Get formatted reactions
   const reactions = await getFormattedReactions(messageId);
 
-  // Emit via socket
-  io.to(message.chatSession.toString()).emit("message_reactions_updated", {
+  // Emit via Pusher
+  await sendMessageReactionsUpdate(message.chatSession.toString(), {
     messageId,
     chatSessionId: message.chatSession.toString(),
     reactions,
