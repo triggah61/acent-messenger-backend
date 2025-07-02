@@ -195,7 +195,12 @@ router.post("/events", Authenticated, async (req, res) => {
 
       case "typing":
         if (data.chatSessionId) {
-          await sendTypingIndicator(data.chatSessionId, userId, true);
+          const userInfo = {
+            firstName: req.user.firstName,
+            lastName: req.user.lastName,
+            username: req.user.username,
+          };
+          await sendTypingIndicator(data.chatSessionId, userId, true, userInfo);
           res.json({ success: true, message: "Typing indicator sent" });
         } else {
           res.status(400).json({ error: "Chat session ID required" });
@@ -204,7 +209,12 @@ router.post("/events", Authenticated, async (req, res) => {
 
       case "stop_typing":
         if (data.chatSessionId) {
-          await sendTypingIndicator(data.chatSessionId, userId, false);
+          const userInfo = {
+            firstName: req.user.firstName,
+            lastName: req.user.lastName,
+            username: req.user.username,
+          };
+          await sendTypingIndicator(data.chatSessionId, userId, false, userInfo);
           res.json({ success: true, message: "Stop typing indicator sent" });
         } else {
           res.status(400).json({ error: "Chat session ID required" });

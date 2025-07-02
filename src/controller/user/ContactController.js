@@ -144,10 +144,13 @@ exports.checkPhoneNumbers = catchAsync(async (req, res) => {
 
   const existingUsers = await User.aggregate(aggregationPipeline);
 
+  // console.log(existingUsers);
+
   // Update user's contacts with found user IDs
   if (existingUsers.length > 0) {
     let ids = existingUsers.map((foundUser) => foundUser._id);
-    User.updateOne({ _id: user._id }, { contacts: ids });
+    console.log("existingUsers", ids,user);
+    await User.findByIdAndUpdate(user._id, { contacts: ids });
   }
 
   res.status(200).json(existingUsers);

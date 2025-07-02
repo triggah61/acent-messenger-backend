@@ -253,17 +253,29 @@ const sendMessageToChat = async (chatSessionId, messageData) => {
  * @param {string} chatSessionId - Chat session ID
  * @param {string} userId - User ID who is typing
  * @param {boolean} isTyping - Whether user is typing
+ * @param {Object} userInfo - Optional user information
  */
-const sendTypingIndicator = async (chatSessionId, userId, isTyping) => {
+const sendTypingIndicator = async (chatSessionId, userId, isTyping, userInfo = null) => {
   try {
     const eventName = isTyping ? "typing_start" : "typing_stop";
     
-    await global.pusher.trigger(`private-chat_${chatSessionId}`, eventName, {
+    const eventData = {
       userId: userId,
       chatSessionId: chatSessionId,
       isTyping: isTyping,
       timestamp: new Date().toISOString(),
-    });
+    };
+
+    // Add user information if provided
+    if (userInfo) {
+      eventData.userInfo = {
+        firstName: userInfo.firstName,
+        lastName: userInfo.lastName,
+        username: userInfo.username,
+      };
+    }
+    
+    await global.pusher.trigger(`private-chat_${chatSessionId}`, eventName, eventData);
 
     console.log(`Typing indicator sent: ${eventName} for user ${userId} in chat ${chatSessionId}`);
     return true;
