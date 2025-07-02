@@ -448,9 +448,10 @@ exports.sendMessage = catchAsync(async (req, res) => {
   // Enhanced Pusher event emission with participants data
   console.log(`Emitting new_message to chat session: ${chatSessionId}`);
   
-  // Add participants data for global event broadcasting
+  // Add participants data and session type for global event broadcasting
   const messageDataWithParticipants = {
     ...messageInfo,
+    sessionType: chatSession.type, // Add session type for smart update routing
     participants: chatSession.receipients.map(recipient => ({
       user: {
         _id: recipient.user.toString()
@@ -721,5 +722,60 @@ exports.toggleReaction = catchAsync(async (req, res) => {
   return res.status(200).json({
     message: "Message reacted successfully",
     data: message,
+  });
+});
+
+/**
+ * Get chat session by ID
+ * Used for FCM notification navigation
+ */
+exports.getChatSessionById = catchAsync(async (req, res) => {
+  const { user } = req;
+  const { sessionId } = req.params;
+
+  SimpleValidator(req.params, {
+    sessionId: "required|string",
+  });
+
+  // Find the chat session and verify user has access to it
+  const chatSession = await ChatSession.findOne({
+    _id: new Types.ObjectId(sessionId),
+    receipients: {
+      $elemMatch: { user: new Types.ObjectId(user._id) }
+    }
+  })
+    .populate("lastMessage")
+    .populate(
+      "receipients.user",
+      "firstName lastName photo dialCode phone status"
+    )
+    .lean();
+
+  if (!chatSession) {
+    return res.status(404).json({
+      message: "Chat session not found or access denied",
+      data: null,
+    });
+  }
+
+  // Format the response similar to other chat endpoints
+  let otherUser = {};
+  if (chatSession.type === "personal") {
+    otherUser = chatSession.receipients.find(
+      (recipient) => recipient.user._id.toString() !== user._id.toString()
+    )?.user ?? {};
+  }
+
+  chatSession.otherUser = otherUser;
+  chatSession.title = chatSession.type === "personal"
+    ? `${otherUser.firstName || ''} ${otherUser.lastName || ''}`.trim()
+    : chatSession.title;
+  chatSession.photo = chatSession.type === "personal" 
+    ? otherUser.photo 
+    : chatSession.photo;
+
+  return res.status(200).json({
+    message: "Chat session found",
+    data: chatSession,
   });
 });

@@ -6,6 +6,7 @@ const {
   sessionList,
   getMessages,
   toggleReaction,
+  getChatSessionById,
 } = require("../../../controller/user/ChatController");
 const Authenticated = require("../../../middleware/Authenticated");
 const chatRouter = require("express").Router();
@@ -23,6 +24,7 @@ chatRouter.group("/chat", (chat) => {
     sendMessage
   );
   chat.get("/sessionList", sessionList);
+  chat.get("/session/:sessionId", getChatSessionById);
   chat.get("/getMessages/:chatSessionId", getMessages);
   chat.post("/toggleReaction", toggleReaction);
 });

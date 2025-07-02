@@ -550,12 +550,14 @@ class FCMService {
 
       const data = {
         type: 'new_message',
-        messageId: messageData._id?.toString() || messageData.id,
-        chatSessionId: messageData.chatSession,
-        senderId: senderData._id?.toString() || senderData.id,
+        messageId: (messageData._id?.toString() || messageData.id)?.toString(),
+        chatSessionId: messageData.chatSession?.toString(),
+        senderId: (senderData._id?.toString() || senderData.id)?.toString(),
         senderName: `${senderData.firstName} ${senderData.lastName}`,
         content: messageData.content || '',
       };
+
+      console.log('FCMService: Sending new message notification with data:', JSON.stringify(data, null, 2));
 
       const options = {
         sound: user.notificationSettings.sound,
@@ -627,14 +629,16 @@ class FCMService {
 
       const data = {
         type: 'group_message',
-        messageId: messageData._id?.toString() || messageData.id,
-        chatSessionId: messageData.chatSession,
-        senderId: senderData._id?.toString() || senderData.id,
+        messageId: (messageData._id?.toString() || messageData.id)?.toString(),
+        chatSessionId: messageData.chatSession?.toString(),
+        senderId: (senderData._id?.toString() || senderData.id)?.toString(),
         senderName: `${senderData.firstName} ${senderData.lastName}`,
-        groupId: groupData._id?.toString() || groupData.id,
+        groupId: (groupData._id?.toString() || groupData.id)?.toString(),
         groupName: groupData.title || 'Group',
         content: messageData.content || '',
       };
+
+      console.log('FCMService: Sending group message notification with data:', JSON.stringify(data, null, 2));
 
       const options = {
         sound: true,
