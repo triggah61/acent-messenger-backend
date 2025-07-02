@@ -115,7 +115,6 @@ exports.findChatSessionByReceipient = catchAsync(async (req, res) => {
 
 exports.createChatSession = catchAsync(async (req, res) => {
   const { user } = req;
-  console.log("req.body", req.body);
   const { recepientIds, title, type } = req.body;
 
   SimpleValidator(req.body, {
@@ -347,8 +346,6 @@ exports.sendMessage = catchAsync(async (req, res) => {
     // message: "required|string",
   });
 
-  console.log("attachments", attachments);
-
   if (attachments.length <= 0 && !req.body?.message) {
     throw new AppError("Message is required", 400);
   }
@@ -417,7 +414,7 @@ exports.sendMessage = catchAsync(async (req, res) => {
     }))
   };
   
-  await sendMessageToChat(chatSessionId, messageDataWithParticipants);
+  sendMessageToChat(chatSessionId, messageDataWithParticipants);
   console.log(`Emitted new_message and global_new_message via Pusher to ${chatSession.receipients.length} participants`);
 
   // Send FCM push notifications to recipients (excluding sender)
@@ -467,7 +464,7 @@ exports.sendMessage = catchAsync(async (req, res) => {
     // Don't throw error here - message was sent successfully, just notification failed
   }
 
-  return res.status(200).json({
+  res.status(200).json({
     message: "Message sent successfully",
     data: messageInfo,
   });

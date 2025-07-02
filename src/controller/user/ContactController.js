@@ -146,11 +146,15 @@ exports.checkPhoneNumbers = catchAsync(async (req, res) => {
 
   // console.log(existingUsers);
 
-  // Update user's contacts with found user IDs
+  // Update user's contacts with found user IDs (add only new unique contacts)
   if (existingUsers.length > 0) {
     let ids = existingUsers.map((foundUser) => foundUser._id);
-    console.log("existingUsers", ids,user);
-    await User.findByIdAndUpdate(user._id, { contacts: ids });
+    // Use $addToSet to add only unique contact IDs that don't already exist
+    await User.findByIdAndUpdate(user._id, {
+      $addToSet: {
+        contacts: { $each: ids },
+      },
+    });
   }
 
   res.status(200).json(existingUsers);
