@@ -257,36 +257,39 @@ exports.getContacts = catchAsync(async (req, res) => {
   page = parseInt(page);
   limit = parseInt(limit);
 
+  let contactIds = await User.find({ _id: user._id }).distinct("contacts");
+  console.log(contactIds);
+
   let aggregatedQuery = User.aggregate([
     {
       $match: {
-        _id: user._id,
+        _id: { $in: contactIds },
       },
     },
-    {
-      $lookup: {
-        from: "users",
-        localField: "contacts",
-        foreignField: "_id",
-        as: "contacts",
-        pipeline: [
-          {
-            $match: {
-              status: "activated",
-              _id: { $ne: user._id },
-            },
-          },
-        ],
-      },
-    },
-    {
-      $unwind: "$contacts",
-    },
-    {
-      $replaceRoot: {
-        newRoot: "$contacts",
-      },
-    },
+    // {
+    //   $lookup: {
+    //     from: "users",
+    //     localField: "contacts",
+    //     foreignField: "_id",
+    //     as: "contacts",
+    //     pipeline: [
+    //       {
+    //         $match: {
+    //           // status: "activated",
+    //           _id: { $ne: user._id },
+    //         },
+    //       },
+    //     ],
+    //   },
+    // },
+    // {
+    //   $unwind: "$contacts",
+    // },
+    // {
+    //   $replaceRoot: {
+    //     newRoot: "$contacts",
+    //   },
+    // },
 
     {
       $match: {

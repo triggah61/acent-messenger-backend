@@ -15,6 +15,32 @@ const {
   sendMessageReactionsUpdate 
 } = require("../../config/pusher");
 
+/**
+ * Asynchronously add users to each other's contacts (fire and forget)
+ * @param {string} userId1 - First user ID
+ * @param {string} userId2 - Second user ID
+ */
+const addUsersToContacts = async (userId1, userId2) => {
+  try {
+    // Add userId2 to userId1's contacts and userId1 to userId2's contacts
+    await Promise.all([
+      User.findByIdAndUpdate(
+        userId1,
+        { $addToSet: { contacts: new Types.ObjectId(userId2) } }
+      ),
+      User.findByIdAndUpdate(
+        userId2,
+        { $addToSet: { contacts: new Types.ObjectId(userId1) } }
+      )
+    ]);
+    
+    console.log(`Contacts updated: Added ${userId1} and ${userId2} to each other's contacts`);
+  } catch (error) {
+    console.error('Error adding users to contacts:', error);
+    // Don't throw error as this is a background operation
+  }
+};
+
 exports.findChatSessionByReceipient = catchAsync(async (req, res) => {
   const { user } = req;
   const { receipientId } = req.params;
@@ -73,6 +99,11 @@ exports.findChatSessionByReceipient = catchAsync(async (req, res) => {
       }
     }
 
+    // Add users to each other's contacts asynchronously (fire and forget)
+    addUsersToContacts(user._id.toString(), receipientId).catch(err => 
+      console.error('Background contact addition failed:', err)
+    );
+
     let otherUser =
       newChatSession.receipients.find(
         (receipient) => receipient.user._id.toString() !== user._id.toString()
@@ -93,6 +124,12 @@ exports.findChatSessionByReceipient = catchAsync(async (req, res) => {
       data: newChatSession,
     });
   } else {
+    // Add users to each other's contacts asynchronously (fire and forget)
+    // This handles the case where users have an existing chat but aren't in contacts
+    addUsersToContacts(user._id.toString(), receipientId).catch(err => 
+      console.error('Background contact addition failed:', err)
+    );
+
     let otherUser =
       chatSession.receipients.find(
         (receipient) => receipient.user?._id.toString() !== user._id.toString()
@@ -166,6 +203,13 @@ exports.createChatSession = catchAsync(async (req, res) => {
       await sendNewChatSession(recipient.user._id.toString(), chatSession);
       console.log(`Emitted new_chat_session to user_${recipient.user._id}`);
     }
+  }
+
+  // Add users to each other's contacts asynchronously for personal chats (fire and forget)
+  if (chatSession.type === "personal" && recepientIds.length === 1) {
+    addUsersToContacts(user._id.toString(), recepientIds[0]).catch(err => 
+      console.error('Background contact addition failed:', err)
+    );
   }
 
   return res.status(200).json({
