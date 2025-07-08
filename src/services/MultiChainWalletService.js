@@ -148,7 +148,7 @@ class MultiChainWalletService {
     };
 
     // Admin wallet address for collecting fees
-    this.adminWalletAddress = process.env.ADMIN_WALLET_ADDRESS;
+    this.adminWalletAddress = process.env.BTC_ADMIN_WALLET_ADDRESS;
 
     // Platform fee percentage (0.5% = 0.005)
     this.platformFeePercentage =

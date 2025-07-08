@@ -129,7 +129,7 @@ class BtcWalletService {
     };
 
     // Platform fee configuration
-    this.adminWalletAddress = process.env.ADMIN_WALLET_ADDRESS;
+    this.adminWalletAddress = process.env.BTC_ADMIN_WALLET_ADDRESS;
     this.platformFeePercentage =
       parseFloat(process.env.PLATFORM_FEE_PERCENTAGE) || 0.005;
     this.minimumPlatformFee =
