@@ -188,9 +188,9 @@ exports.getCallHistory = catchAsync(async (req, res) => {
 });
 
 /**
- * Get a specific call by ID (for incoming call notifications)
+ * Get a specific call by ID
  */
-exports.getCallById = catchAsync(async (req, res) => {
+exports.getCall = catchAsync(async (req, res) => {
   const { user } = req;
   const { callId } = req.params;
 
@@ -201,13 +201,14 @@ exports.getCallById = catchAsync(async (req, res) => {
   const Call = require("../../model/Call");
   const call = await Call.findById(callId)
     .populate('initiator', 'firstName lastName photo dialCode phone')
-    .populate('participants.user', 'firstName lastName photo dialCode phone');
+    .populate('participants.user', 'firstName lastName photo dialCode phone')
+    .populate('chatSession');
 
   if (!call) {
     throw new AppError("Call not found", 404);
   }
 
-  // Check if user is a participant or initiator
+  // Check if user is a participant in the call
   const isParticipant = call.participants.some(p => p.user._id.toString() === user._id.toString());
   const isInitiator = call.initiator._id.toString() === user._id.toString();
 

@@ -16,7 +16,7 @@ const {
   declineCall,
   endCall,
   generateToken,
-  getCallById,
+  getCall,
   getCallHistory,
   getActiveCalls,
   updateCallQuality,
@@ -39,8 +39,8 @@ callRouter.group("/call", (call) => {
   // Token generation
   call.get("/token/:callId", generateToken);
 
-  // Get specific call by ID
-  call.get("/:callId", getCallById);
+  // Get specific call
+  call.get("/:callId", getCall);
 
   // Call history and status
   call.get("/history", getCallHistory);

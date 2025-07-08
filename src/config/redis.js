@@ -8,6 +8,12 @@ class RedisConfig {
 
   async connect() {
     try {
+      // Prevent multiple connections
+      if (this.client && this.isConnected) {
+        console.log('Redis client already connected');
+        return this.client;
+      }
+
       this.client = redis.createClient({
         host: process.env.REDIS_HOST || 'localhost',
         port: process.env.REDIS_PORT || 6379,
@@ -16,6 +22,9 @@ class RedisConfig {
         retryDelayOnFailover: 100,
         maxRetriesPerRequest: 3,
       });
+
+      // Set max listeners to prevent memory leak warnings
+      this.client.setMaxListeners(20);
 
       this.client.on('error', (err) => {
         console.error('Redis Client Error:', err);
