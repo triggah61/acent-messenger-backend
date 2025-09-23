@@ -47,6 +47,11 @@ const schema = new Schema(
       type: Date,
       default: null,
     },
+    language: {
+      type: String,
+      default: 'en', // Default to English
+      enum: ['en', 'es', 'fr', 'de', 'it', 'pt', 'ru', 'zh', 'ja', 'ko', 'ar', 'hi', 'ms'],
+    },
     socketId: {
       type: String,
       default: null,
@@ -145,6 +150,7 @@ schema.post("save", async function (doc) {
       status: doc.status,
       gender: doc.gender,
       dob: doc.dob,
+      language: doc.language,
       updatedAt: doc.updatedAt
     };
     

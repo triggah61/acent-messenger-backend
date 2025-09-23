@@ -47,9 +47,8 @@ module.exports = catchAsync(async (req, res, next) => {
       // Cache miss - fetch from database
       console.log(`Cache miss for user ${id}, fetching from database`);
       user = await User.findById(id)
-        .select("firstName lastName username email phone dialCode photo status gender dob")
+        .select("firstName lastName username email phone dialCode photo status gender dob language")
         .lean();
-        
       if (user) {
         // Cache the user data for future requests
         await UserCacheService.cacheUser(id, user);

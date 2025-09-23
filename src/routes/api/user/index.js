@@ -8,6 +8,7 @@ const walletRouter = require("./wallet");
 const notificationRouter = require("./notification");
 // const authRouter = require("./auth");
 const callRouter = require("./call");
+const translationRouter = require("./translation");
 const userRouter = express.Router();
 require("express-group-routes");
 
@@ -19,6 +20,7 @@ userRouter.group("/user", (user) => {
   user.use(postRouter);
   user.use(walletRouter);
   user.use(notificationRouter);
+  user.use(translationRouter);
   // user.use(authRouter);
   user.use(callRouter);
   user.get("/", (req, res) => {

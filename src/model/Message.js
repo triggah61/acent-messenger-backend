@@ -29,6 +29,19 @@ const messageSchema = new Schema(
       type: String,
       trim: true,
     },
+    translatedContent: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+    originalLanguage: {
+      type: String,
+      default: "en",
+    },
+    translatedLanguage: {
+      type: String,
+      default: null,
+    },
     attachments: [
       {
         type: Schema.Types.ObjectId,

@@ -35,6 +35,7 @@ class UserCacheService {
         status: userData.status,
         gender: userData.gender,
         dob: userData.dob,
+        language: userData.language,
         updatedAt: userData.updatedAt || new Date()
       };
 

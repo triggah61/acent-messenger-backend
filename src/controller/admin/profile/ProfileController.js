@@ -31,6 +31,7 @@ const UserCacheService = require("../../../services/UserCacheService");
  */
 exports.info = catchAsync(async (req, res) => {
   let { user } = req;
+  console.log(user);
   let data = {
     _id: user._id,
     firstName: user.firstName,
@@ -43,6 +44,7 @@ exports.info = catchAsync(async (req, res) => {
     createdAt: user.createdAt,
     gender: user.gender,
     dob: user.dob,
+    language: user?.language || "en",
   };
   res.json({
     message: "Fetched successfully",
@@ -72,7 +74,7 @@ exports.updateProfile = catchAsync(async (req, res) => {
     firstName: "required",
   });
 
-  const { firstName, lastName, username, email, phone, gender, dob } = req.body;
+  const { firstName, lastName, username, email, phone, gender, dob, language } = req.body;
 
   console.log(req.body);
 
@@ -100,6 +102,9 @@ exports.updateProfile = catchAsync(async (req, res) => {
   }
   if (dob) {
     user.dob = new Date(dob);
+  }
+  if (language) {
+    user.language = language;
   }
   if (username) {
     const existingUser = await User.findOne({
@@ -133,6 +138,7 @@ exports.updateProfile = catchAsync(async (req, res) => {
         status: user.status,
         gender: user.gender,
         dob: user.dob,
+        language: user?.language || "en",
       },
     },
   });
