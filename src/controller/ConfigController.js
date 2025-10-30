@@ -27,6 +27,7 @@ exports.getConfig = catchAsync(async (req, res) => {
     { code: 'zh', name: 'Chinese', nativeName: '中文' },
     { code: 'ja', name: 'Japanese', nativeName: '日本語' },
     { code: 'ko', name: 'Korean', nativeName: '한국어' },
+    { code: 'bn', name: 'Bengali', nativeName: 'বাংলা' },
     { code: 'ar', name: 'Arabic', nativeName: 'العربية' },
     { code: 'hi', name: 'Hindi', nativeName: 'हिन्दी' },
     { code: 'ms', name: 'Malay', nativeName: 'Bahasa Melayu' }
@@ -42,6 +43,14 @@ exports.getConfig = catchAsync(async (req, res) => {
     defaultStability: 0.5,
     defaultSimilarityBoost: 0.75,
   };
+
+  // Add Google Speech-to-Text configuration for speaker diarization
+  data.googleSttApiKey = process.env.GOOGLE_STT_API_KEY || '';
+  data.googleSttEnabled = !!process.env.GOOGLE_STT_API_KEY;
+
+  // Add AssemblyAI configuration for real-time transcription
+  data.assemblyaiApiKey = process.env.ASSEMBLYAI_API_KEY || '';
+  data.assemblyaiEnabled = !!process.env.ASSEMBLYAI_API_KEY;
 
   res.json({
     message: "Config fetched successfully",

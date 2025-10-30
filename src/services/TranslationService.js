@@ -11,8 +11,31 @@ const { GoogleGenerativeAI } = require('@google/generative-ai');
 
 class TranslationService {
   constructor() {
-    this.genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-    this.model = this.genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
+    this.genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY, {version:"v1"});
+    // Use gemini-1.5-pro which is stable and available in v1beta
+    this.model = this.genAI.getGenerativeModel({
+      model: "gemini-2.5-flash",
+      generationConfig: {
+        temperature: 0.1,
+        topP: 0.8,
+        topK: 40,
+        maxOutputTokens: 1024,
+      },
+    });
+  }
+
+  /**
+   * Test if the model is available and working
+   * @returns {Promise<boolean>} True if model is working
+   */
+  async testModel() {
+    try {
+      const testResult = await this.model.generateContent("Hello");
+      return testResult && testResult.response && testResult.response.text();
+    } catch (error) {
+      console.error('Model test failed:', error);
+      return false;
+    }
   }
 
   /**
@@ -65,6 +88,14 @@ class TranslationService {
       return translatedText;
     } catch (error) {
       console.error('Translation error:', error);
+      console.error('Error details:', {
+        message: error.message,
+        status: error.status,
+        statusText: error.statusText,
+        sourceLang,
+        targetLang,
+        text: text.substring(0, 100) + '...'
+      });
       // Return original text if translation fails
       return text;
     }
