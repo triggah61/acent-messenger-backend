@@ -10,7 +10,6 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@google/generative-ai": "^0.24.1",
     "agora-access-token": "^2.0.4",
     "aws-sdk": "^2.1687.0",
     "axios": "^1.7.7",
