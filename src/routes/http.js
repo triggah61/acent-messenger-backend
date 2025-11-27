@@ -1,5 +1,5 @@
 const catchAsync = require("../exception/catchAsync");
-const authRouter = require("./api/admin/auth");
+const authRouter = require("./api/auth");
 const configRouter = require("./api/admin/config");
 const profileRouter = require("./api/admin/profile");
 const userRouter = require("./api/user");

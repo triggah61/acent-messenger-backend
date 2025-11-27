@@ -13,13 +13,15 @@ const {
   login,
   verifyLoginWithOTP,
   resendOTP,
-} = require("../../../controller/admin/auth/LoginController");
+} = require("../../controller/admin/auth/LoginController");
 const {
   register,
   verifyRegistration,
   registerRequest,
-} = require("../../../controller/admin/auth/RegisterController");
-const otpVerified = require("../../../middleware/otpVerified");
+  loginWithEmail,
+  verifyEmailLogin,
+} = require("../../controller/admin/auth/RegisterController");
+const otpVerified = require("../../middleware/otpVerified");
 
 /**
  * Express router to mount admin authentication related functions on.
@@ -53,6 +55,18 @@ authRouter.group("/auth", (auth) => {
   auth.post("/registerRequest", registerRequest);
 
   auth.post("/verifyRegistration", otpVerified, verifyRegistration);
+
+
+
+
+  auth.post("/email/login", loginWithEmail);
+
+  /**
+   * POST /auth/email/login/verify
+   * @desc Verify email-based login with OTP
+   * @access Public
+   */
+  auth.post("/email/login/verify", otpVerified, verifyEmailLogin);
 
 });
 

@@ -75,3 +75,85 @@ exports.verifyRegistration = catchAsync(async (req, res) => {
     data: { token: webToken },
   });
 });
+
+exports.loginWithEmail = catchAsync(async (req, res) => {
+  await SimpleValidator(req.body, {
+    email: "required|email",
+    password: "required",
+  });
+
+  const { email, password } = req.body;
+
+  // Find user by email
+  const user = await User.findOne({
+    email: email.toLowerCase(),
+    status: { $ne: "deleted" },
+  });
+
+  if (!user) {
+    throw new AppError("Invalid email or password", 401);
+  }
+
+  if (user.status === "blocked") {
+    throw new AppError("User account is blocked", 400);
+  }
+
+  if (user.status === "pending") {
+    throw new AppError(
+      "User account is not activated. Please verify your email first.",
+      400
+    );
+  }
+
+  // Check password
+  if (
+    !user.password ||
+    !(await user.correctPassword(password, user.password))
+  ) {
+    throw new AppError("Invalid email or password", 401);
+  }
+
+  const webToken = await generateWebToken(user);
+
+  return res.json({
+    message: "Login successful",
+    data: { token: webToken },
+  });
+
+  // Send OTP for two-factor authentication
+  let otp = await createOtp(
+    user._id,
+    "USER_LOGIN",
+    "email",
+    email.toLowerCase(),
+    {
+      email: email.toLowerCase(),
+      userId: user._id,
+    }
+  );
+
+  return res.status(200).json({
+    status: "otp_required",
+    message: "Verification code sent to your email",
+    data: { traceId: otp.traceId },
+  });
+});
+
+exports.verifyEmailLogin = catchAsync(async (req, res) => {
+  let { trace, fcmToken, platform, deviceId } = req.body;
+  let { email, userId } = trace.data;
+
+  let user = await User.findById(userId);
+  if (!user) {
+    throw new AppError("User not found", 404);
+  }
+
+  console.log(user);
+  // Generate the final JWT token
+  const webToken = await generateWebToken(user);
+
+  res.json({
+    message: "Login successful",
+    data: { token: webToken },
+  });
+});

@@ -121,6 +121,32 @@ const schema = new Schema(
       enum: ["pending", "activated", "blocked", "deleted"],
       default: "pending",
     },
+    // Credit balance fields
+    topUpCreditBalance: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    monthlySubscriptionCreditBalance: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    // Subscription fields
+    subscriptionPlan: {
+      type: Schema.Types.ObjectId,
+      ref: "SubscriptionPlan",
+      default: null,
+    },
+    subscriptionStatus: {
+      type: String,
+      enum: ["none", "active", "expired", "cancelled"],
+      default: "none",
+    },
+    subscriptionExpiresAt: {
+      type: Date,
+      default: null,
+    },
   },
   {
     timestamps: true,

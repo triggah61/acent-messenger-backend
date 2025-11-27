@@ -18,6 +18,9 @@ const catchAsync = require("../../../exception/catchAsync");
 const User = require("../../../model/User");
 const SimpleValidator = require("../../../validator/simpleValidator");
 const UserCacheService = require("../../../services/UserCacheService");
+const BalanceService = require("../../../services/BalanceService");
+const SubscriptionPlan = require("../../../model/SubscriptionPlan");
+const SubscriptionHistory = require("../../../model/SubscriptionHistory");
 
 /**
  * Retrieves the profile information of the authenticated user
@@ -32,6 +35,81 @@ const UserCacheService = require("../../../services/UserCacheService");
 exports.info = catchAsync(async (req, res) => {
   let { user } = req;
   console.log(user);
+  
+  // Get balance summary (only balance amounts, not subscription status)
+  const balanceSummaryFull = await BalanceService.getBalanceSummary(user._id);
+  const balanceSummary = {
+    topUpBalance: balanceSummaryFull.topUpBalance,
+    subscriptionBalance: balanceSummaryFull.subscriptionBalance,
+    totalBalance: balanceSummaryFull.totalBalance,
+  };
+  
+  // Sync subscription info first to ensure User model is up to date
+  await BalanceService.syncUserBalanceFromSubscriptions(user._id);
+  
+  // Refresh user data to get updated subscription info
+  const updatedUser = await User.findById(user._id).select(
+    "subscriptionPlan subscriptionStatus subscriptionExpiresAt"
+  );
+  
+  // Get current subscription plan details
+  // First try from User model, if null, get from latest active subscription
+  let subscriptionPlan = null;
+  let subscriptionStatus = updatedUser?.subscriptionStatus || "none";
+  let subscriptionExpiresAt = updatedUser?.subscriptionExpiresAt || null;
+  
+  if (updatedUser?.subscriptionPlan) {
+    subscriptionPlan = await SubscriptionPlan.findById(updatedUser.subscriptionPlan)
+      .select("-stripeMonthlyPriceId -stripeYearlyPriceId -paypalMonthlyPlanId -paypalYearlyPlanId -paddleMonthlyPlanId -paddleYearlyPlanId");
+  } else {
+    // If User model doesn't have subscriptionPlan, get from latest active subscription
+    const latestActiveSubscription = await SubscriptionHistory.findOne({
+      user: user._id,
+      status: "active",
+    })
+      .sort({ createdAt: -1 })
+      .populate("subscriptionPlan", "-stripeMonthlyPriceId -stripeYearlyPriceId -paypalMonthlyPlanId -paypalYearlyPlanId -paddleMonthlyPlanId -paddleYearlyPlanId");
+    
+    if (latestActiveSubscription?.subscriptionPlan) {
+      subscriptionPlan = latestActiveSubscription.subscriptionPlan;
+      subscriptionStatus = "active";
+      subscriptionExpiresAt = latestActiveSubscription.subscriptionEndDate;
+      
+      // Update User model with this info for future requests
+      await User.findByIdAndUpdate(user._id, {
+        subscriptionPlan: latestActiveSubscription.subscriptionPlan._id,
+        subscriptionStatus: "active",
+        subscriptionExpiresAt: latestActiveSubscription.subscriptionEndDate,
+      });
+    }
+  }
+
+  // Format subscription information (without subscription history)
+  let subscriptionInfo = null;
+  if (subscriptionPlan || subscriptionStatus !== "none") {
+    subscriptionInfo = {
+      currentPlan: subscriptionPlan ? {
+        _id: subscriptionPlan._id,
+        name: subscriptionPlan.name,
+        subtitle: subscriptionPlan.subtitle,
+        description: subscriptionPlan.description,
+        icon: subscriptionPlan.icon,
+        monthlyPrice: subscriptionPlan.monthlyPrice,
+        monthlyCredit: subscriptionPlan.monthlyCredit,
+        annualMonthlyPrice: subscriptionPlan.annualMonthlyPrice,
+        annualMonthlyCredit: subscriptionPlan.annualMonthlyCredit,
+        color: subscriptionPlan.color,
+        isCustom: subscriptionPlan.isCustom,
+        contactFormLink: subscriptionPlan.contactFormLink,
+        unlimitedCredit: subscriptionPlan.unlimitedCredit,
+        unlimitedCreditCap: subscriptionPlan.unlimitedCreditCap,
+        isPopular: subscriptionPlan.isPopular,
+      } : null,
+      subscriptionStatus: subscriptionStatus,
+      subscriptionExpiresAt: subscriptionExpiresAt,
+    };
+  }
+  
   let data = {
     _id: user._id,
     firstName: user.firstName,
@@ -45,6 +123,8 @@ exports.info = catchAsync(async (req, res) => {
     gender: user.gender,
     dob: user.dob,
     language: user?.language || "en",
+    balance: balanceSummary,
+    subscription: subscriptionInfo,
   };
   res.json({
     message: "Fetched successfully",
