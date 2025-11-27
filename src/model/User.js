@@ -147,6 +147,11 @@ const schema = new Schema(
       type: Date,
       default: null,
     },
+    role: {
+      type: String,
+      enum: ["admin", "user", "superAdmin"],
+      default: "user",
+    }
   },
   {
     timestamps: true,

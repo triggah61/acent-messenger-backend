@@ -199,7 +199,7 @@ exports.syncUserBalanceFromSubscriptions = async (userId) => {
  */
 exports.getBalanceSummary = async (userId) => {
   // Sync subscription status (expiration, etc.) but not balance
-  await this.syncUserBalanceFromSubscriptions(userId);
+  await exports.syncUserBalanceFromSubscriptions(userId);
 
   const user = await User.findById(userId).select(
     "topUpCreditBalance monthlySubscriptionCreditBalance subscriptionExpiresAt subscriptionStatus subscriptionPlan"
