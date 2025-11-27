@@ -6,8 +6,8 @@ const dashboardRouter = require("express").Router();
 require("express-group-routes");
 dashboardRouter.group("/dashboard", (dashboard) => {
   dashboard.use(Authenticated);
-  dashboard.get("/", DashboardController.getDashboard
-  );
+  dashboard.get("/", DashboardController.getDashboard);
+  dashboard.get("/latest-subscriptions", DashboardController.getLatestSubscriptions);
 });
 
 module.exports = dashboardRouter;

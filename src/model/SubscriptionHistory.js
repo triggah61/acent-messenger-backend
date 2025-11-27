@@ -47,11 +47,6 @@ const subscriptionHistorySchema = new Schema(
     subscriptionEndDate: {
       ...dDefaults,
     },
-    membership: {
-      type: String,
-      enum: ["pro", "free"],
-      default: "pro",
-    },
     remarks: {
       type: String,
       default: null,

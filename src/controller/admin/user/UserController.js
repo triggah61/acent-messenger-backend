@@ -52,7 +52,7 @@ exports.createUser = catchAsync(async (req, res) => {
     password: "required|string|min:8",
   });
 
-  const { firstName, lastName, email, password, phone, role } = req.body;
+  const { firstName, lastName, email, password, phone } = req.body;
 
   // Validate the email exist
   const emailExists = await User.findOne({ email, status: { $ne: "deleted" } });
@@ -67,7 +67,6 @@ exports.createUser = catchAsync(async (req, res) => {
     email,
     password,
     phone,
-    role: role || "user",
     status: "activated",
   });
   if (req.file) {
@@ -113,7 +112,6 @@ exports.getAllUsers = catchAsync(async (req, res) => {
     limit = 10,
     status,
     subscriptionPlan,
-    role,
     sortBy = "createdAt",
     sortOrder = "desc",
   } = req.query;
@@ -125,7 +123,6 @@ exports.getAllUsers = catchAsync(async (req, res) => {
   let query = {
     ...dateQuery,
     ...(status ? { status } : { status: { $ne: "deleted" } }),
-    ...(role ? { role } : {}),
     ...(search && {
       $or: [
         { email: { $regex: search, $options: "i" } },
@@ -220,7 +217,7 @@ exports.getAllUsers = catchAsync(async (req, res) => {
         dialCode: 1,
         photo: 1,
         status: 1,
-        role: 1,
+        roleType: 1,
         gender: 1,
         dob: 1,
         language: 1,
@@ -330,7 +327,7 @@ exports.updateUser = catchAsync(async (req, res) => {
     lastName: "required",
   });
 
-  const { firstName, lastName, email, status, phone, password, role } =
+  const { firstName, lastName, email, status, phone, password, roleType } =
     req.body;
   const userId = req.params.id;
 
@@ -353,8 +350,8 @@ exports.updateUser = catchAsync(async (req, res) => {
   if (phone) {
     user.phone = phone;
   }
-  if (role) {
-    user.role = role;
+  if (roleType) {
+    user.roleType = roleType;
   }
   if (password) {
     user.password = password;
