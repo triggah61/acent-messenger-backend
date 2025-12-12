@@ -47,6 +47,31 @@ const schema = new Schema(
       enum: ["init", "executed", "failed"],
       default: "init",
     },
+    // Google Play Billing fields
+    googlePlayPurchaseToken: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    googlePlayOrderId: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    googlePlayTransactionId: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    googlePlayProductId: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    googlePlayAcknowledged: {
+      type: Boolean,
+      default: false,
+    },
   },
   {
     timestamps: true,

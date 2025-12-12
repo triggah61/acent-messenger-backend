@@ -21,6 +21,7 @@ const SubscriptionPlan = require("../../../model/SubscriptionPlan");
 const dateQueryGenerator = require("../../../utils/dateQueryGenerator");
 const SimpleValidator = require("../../../validator/simpleValidator");
 const { upload, deleteFileByPath } = require("../../../config/file");
+const googlePlayBillingService = require("../../../services/GooglePlayBillingService");
 
 /**
  * Creates a new subscription plan
@@ -64,6 +65,24 @@ exports.createSubscriptionPlan = catchAsync(async (req, res) => {
 
   await SimpleValidator(req.body, validationRules);
 
+  // Parse benefits array from form data (benefits[0], benefits[1], etc.)
+  const benefits = [];
+  if (req.body.benefits) {
+    if (Array.isArray(req.body.benefits)) {
+      benefits.push(...req.body.benefits.filter(b => b && b.trim()));
+    } else {
+      // Handle form data format: benefits[0], benefits[1], etc.
+      Object.keys(req.body).forEach(key => {
+        if (key.startsWith('benefits[') && key.endsWith(']')) {
+          const value = req.body[key];
+          if (value && value.trim()) {
+            benefits.push(value.trim());
+          }
+        }
+      });
+    }
+  }
+
   const {
     name,
     subtitle,
@@ -102,6 +121,7 @@ exports.createSubscriptionPlan = catchAsync(async (req, res) => {
     name,
     subtitle: subtitle || null,
     description: description || null,
+    benefits: benefits.length > 0 ? benefits : [],
     actionButtonText: actionButtonText || "Subscribe Now",
     unlimitedCredit: unlimitedCredit || "no",
     unlimitedCreditCap: unlimitedCreditCap ? parseInt(unlimitedCreditCap) : 0,
@@ -142,9 +162,48 @@ exports.createSubscriptionPlan = catchAsync(async (req, res) => {
     await plan.save();
   }
 
+  // Sync with Google Play Console (non-blocking)
+  let googlePlaySyncResult = null;
+  if (!isCustom && (parseFloat(monthlyPrice) > 0 || parseFloat(annualMonthlyPrice) > 0)) {
+    try {
+      googlePlaySyncResult = await googlePlayBillingService.syncSubscriptionPlan(plan);
+      
+      if (googlePlaySyncResult.success) {
+        // Update plan with Google Play product IDs
+        // Note: Google Play subscriptions use the same product ID for both sandbox and production
+        // The environment is determined by the test account, not the product ID
+        if (googlePlaySyncResult.monthlyProductId) {
+          plan.googlePlayMonthlySubscriptionId = googlePlaySyncResult.monthlyProductId;
+          plan.googlePlaySandboxMonthlySubscriptionId = googlePlaySyncResult.monthlyProductId; // Same ID for sandbox
+        }
+        if (googlePlaySyncResult.annualProductId) {
+          plan.googlePlayAnnualSubscriptionId = googlePlaySyncResult.annualProductId;
+          plan.googlePlaySandboxAnnualSubscriptionId = googlePlaySyncResult.annualProductId; // Same ID for sandbox
+        }
+        plan.googlePlaySyncStatus = 'synced';
+        plan.googlePlayLastSyncAt = new Date();
+        await plan.save();
+        console.log(`✅ Google Play sync successful for plan: ${plan.name}`);
+      } else if (googlePlaySyncResult.skipped) {
+        console.log(`ℹ️ Google Play sync skipped for plan: ${plan.name} - ${googlePlaySyncResult.reason}`);
+      } else {
+        plan.googlePlaySyncStatus = 'failed';
+        plan.googlePlaySyncError = googlePlaySyncResult.errors?.join(', ') || 'Unknown error';
+        await plan.save();
+        console.warn(`⚠️ Google Play sync failed for plan: ${plan.name}`);
+      }
+    } catch (syncError) {
+      console.error(`❌ Google Play sync error for plan ${plan.name}:`, syncError.message);
+      plan.googlePlaySyncStatus = 'failed';
+      plan.googlePlaySyncError = syncError.message;
+      await plan.save();
+    }
+  }
+
   res.status(201).json({
     message: "Subscription plan created successfully",
     data: plan,
+    googlePlaySync: googlePlaySyncResult,
   });
 });
 
@@ -292,6 +351,24 @@ exports.updateSubscriptionPlan = catchAsync(async (req, res) => {
     throw new AppError("Subscription plan not found", 404);
   }
 
+  // Parse benefits array from form data (benefits[0], benefits[1], etc.)
+  const benefits = [];
+  if (req.body.benefits !== undefined) {
+    if (Array.isArray(req.body.benefits)) {
+      benefits.push(...req.body.benefits.filter(b => b && b.trim()));
+    } else {
+      // Handle form data format: benefits[0], benefits[1], etc.
+      Object.keys(req.body).forEach(key => {
+        if (key.startsWith('benefits[') && key.endsWith(']')) {
+          const value = req.body[key];
+          if (value && value.trim()) {
+            benefits.push(value.trim());
+          }
+        }
+      });
+    }
+  }
+
   const {
     name,
     subtitle,
@@ -342,6 +419,9 @@ exports.updateSubscriptionPlan = catchAsync(async (req, res) => {
   }
   if (description !== undefined) {
     plan.description = description || null;
+  }
+  if (req.body.benefits !== undefined) {
+    plan.benefits = benefits;
   }
   if (monthlyPrice !== undefined) {
     plan.monthlyPrice = parseFloat(monthlyPrice);
@@ -420,9 +500,360 @@ exports.updateSubscriptionPlan = catchAsync(async (req, res) => {
 
   await plan.save();
 
+  // Sync updates to Google Play Console if subscriptions exist
+  let googlePlaySyncResult = null;
+  if (!plan.isCustom && (plan.googlePlayMonthlySubscriptionId || plan.googlePlayAnnualSubscriptionId)) {
+    try {
+      console.log(`Syncing plan updates to Google Play for: ${plan.name}`);
+      
+      // Update monthly subscription if it exists
+      if (plan.googlePlayMonthlySubscriptionId) {
+        await googlePlayBillingService.updateSubscription({
+          productId: plan.googlePlayMonthlySubscriptionId,
+          name: `${plan.name} (Monthly)`,
+          description: plan.description || `${plan.name} monthly subscription`,
+        });
+      }
+
+      // Update annual subscription if it exists
+      if (plan.googlePlayAnnualSubscriptionId) {
+        await googlePlayBillingService.updateSubscription({
+          productId: plan.googlePlayAnnualSubscriptionId,
+          name: `${plan.name} (Annual)`,
+          description: plan.description || `${plan.name} annual subscription`,
+        });
+      }
+
+      plan.googlePlayLastSyncAt = new Date();
+      await plan.save();
+      
+      googlePlaySyncResult = { success: true, updated: true };
+      console.log(`✅ Google Play sync successful for updated plan: ${plan.name}`);
+    } catch (syncError) {
+      console.error(`❌ Google Play sync error for updated plan ${plan.name}:`, syncError.message);
+      googlePlaySyncResult = { success: false, error: syncError.message };
+    }
+  }
+
   res.json({
     message: "Subscription plan updated successfully",
     data: plan,
+    googlePlaySync: googlePlaySyncResult,
+  });
+});
+
+/**
+ * Sync a subscription plan with Google Play Console
+ * Creates or updates the subscription products in Google Play
+ *
+ * @function syncPlanWithGooglePlay
+ * @async
+ * @param {Object} req - Express request object
+ * @param {Object} req.params - URL parameters
+ * @param {string} req.params.id - Plan ID
+ * @param {Object} res - Express response object
+ * @returns {Promise<void>} Sends a JSON response with sync result
+ * @throws {AppError} If the plan is not found
+ */
+exports.syncPlanWithGooglePlay = catchAsync(async (req, res) => {
+  const planId = req.params.id;
+
+  const plan = await SubscriptionPlan.findOne({
+    _id: planId,
+    status: { $ne: "deleted" },
+  });
+
+  if (!plan) {
+    throw new AppError("Subscription plan not found", 404);
+  }
+
+  if (plan.isCustom) {
+    throw new AppError("Custom plans cannot be synced with Google Play", 400);
+  }
+
+  // Check if Google Play service is initialized
+  const serviceStatus = googlePlayBillingService.getStatus();
+  if (!serviceStatus.initialized) {
+    throw new AppError(
+      "Google Play Billing service is not configured. Please set up service account credentials.",
+      503
+    );
+  }
+
+  try {
+    const syncResult = await googlePlayBillingService.syncSubscriptionPlan(plan);
+
+    if (syncResult.success) {
+      // Update plan with Google Play product IDs
+      // Note: Google Play subscriptions use the same product ID for both sandbox and production
+      if (syncResult.monthlyProductId) {
+        plan.googlePlayMonthlySubscriptionId = syncResult.monthlyProductId;
+        plan.googlePlaySandboxMonthlySubscriptionId = syncResult.monthlyProductId; // Same ID for sandbox
+      }
+      if (syncResult.annualProductId) {
+        plan.googlePlayAnnualSubscriptionId = syncResult.annualProductId;
+        plan.googlePlaySandboxAnnualSubscriptionId = syncResult.annualProductId; // Same ID for sandbox
+      }
+      plan.googlePlaySyncStatus = 'synced';
+      plan.googlePlaySyncError = null;
+      plan.googlePlayLastSyncAt = new Date();
+      await plan.save();
+
+      res.json({
+        message: "Subscription plan synced with Google Play successfully",
+        data: plan,
+        syncResult: syncResult,
+      });
+    } else {
+      plan.googlePlaySyncStatus = 'failed';
+      plan.googlePlaySyncError = syncResult.errors?.join(', ') || syncResult.reason || 'Unknown error';
+      await plan.save();
+
+      throw new AppError(
+        `Google Play sync failed: ${plan.googlePlaySyncError}`,
+        500
+      );
+    }
+  } catch (error) {
+    plan.googlePlaySyncStatus = 'failed';
+    plan.googlePlaySyncError = error.message;
+    await plan.save();
+
+    throw error;
+  }
+});
+
+/**
+ * Get Google Play Billing service status
+ *
+ * @function getGooglePlayStatus
+ * @async
+ * @param {Object} req - Express request object
+ * @param {Object} res - Express response object
+ * @returns {Promise<void>} Sends a JSON response with service status
+ */
+/**
+ * Verify if a subscription exists in Google Play Console
+ * @route GET /api/admin/subscription-plans/:id/google-play/verify
+ * @access Private
+ */
+exports.verifySubscriptionInGooglePlay = catchAsync(async (req, res) => {
+  const planId = req.params.id;
+
+  const plan = await SubscriptionPlan.findOne({
+    _id: planId,
+    status: { $ne: "deleted" },
+  });
+
+  if (!plan) {
+    throw new AppError("Subscription plan not found", 404);
+  }
+
+  const serviceStatus = googlePlayBillingService.getStatus();
+  if (!serviceStatus.initialized) {
+    throw new AppError(
+      "Google Play Billing service is not configured",
+      503
+    );
+  }
+
+  const verificationResults = {
+    plan: {
+      id: plan._id,
+      name: plan.name,
+    },
+    monthly: {
+      productId: plan.googlePlayMonthlySubscriptionId,
+      exists: false,
+      status: null,
+      basePlans: [],
+      error: null,
+    },
+    annual: {
+      productId: plan.googlePlayAnnualSubscriptionId,
+      exists: false,
+      status: null,
+      basePlans: [],
+      error: null,
+    },
+  };
+
+  // Verify monthly subscription
+  if (plan.googlePlayMonthlySubscriptionId) {
+    try {
+      const result = await googlePlayBillingService.getSubscriptionDetails(
+        plan.googlePlayMonthlySubscriptionId
+      );
+      if (result.success && result.subscription) {
+        verificationResults.monthly.exists = true;
+        verificationResults.monthly.status = result.subscription.state || 'UNKNOWN';
+        if (result.subscription.basePlans) {
+          verificationResults.monthly.basePlans = result.subscription.basePlans.map(bp => ({
+            id: bp.basePlanId,
+            state: bp.state,
+          }));
+        }
+      }
+    } catch (error) {
+      verificationResults.monthly.error = error.message;
+    }
+  }
+
+  // Verify annual subscription
+  if (plan.googlePlayAnnualSubscriptionId) {
+    try {
+      const result = await googlePlayBillingService.getSubscriptionDetails(
+        plan.googlePlayAnnualSubscriptionId
+      );
+      if (result.success && result.subscription) {
+        verificationResults.annual.exists = true;
+        verificationResults.annual.status = result.subscription.state || 'UNKNOWN';
+        if (result.subscription.basePlans) {
+          verificationResults.annual.basePlans = result.subscription.basePlans.map(bp => ({
+            id: bp.basePlanId,
+            state: bp.state,
+          }));
+        }
+      }
+    } catch (error) {
+      verificationResults.annual.error = error.message;
+    }
+  }
+
+  res.json({
+    status: "success",
+    message: "Subscription verification completed",
+    data: verificationResults,
+  });
+});
+
+exports.getGooglePlayStatus = catchAsync(async (req, res) => {
+  const status = googlePlayBillingService.getStatus();
+  
+  let subscriptions = [];
+  if (status.initialized) {
+    try {
+      subscriptions = await googlePlayBillingService.listSubscriptions();
+    } catch (error) {
+      console.error("Failed to list subscriptions:", error);
+    }
+  }
+
+  res.json({
+    message: "Google Play Billing status retrieved",
+    data: {
+      ...status,
+      subscriptionCount: subscriptions.length,
+      subscriptions: subscriptions.map(s => ({
+        productId: s.productId,
+        packageName: s.packageName,
+      })),
+    },
+  });
+});
+
+/**
+ * Sync all subscription plans with Google Play Console
+ *
+ * @function syncAllPlansWithGooglePlay
+ * @async
+ * @param {Object} req - Express request object
+ * @param {Object} res - Express response object
+ * @returns {Promise<void>} Sends a JSON response with sync results
+ */
+exports.syncAllPlansWithGooglePlay = catchAsync(async (req, res) => {
+  // Check if Google Play service is initialized
+  const serviceStatus = googlePlayBillingService.getStatus();
+  if (!serviceStatus.initialized) {
+    throw new AppError(
+      "Google Play Billing service is not configured. Please set up service account credentials.",
+      503
+    );
+  }
+
+  const plans = await SubscriptionPlan.find({
+    status: "active",
+    isCustom: { $ne: true },
+    $or: [
+      { monthlyPrice: { $gt: 0 } },
+      { annualMonthlyPrice: { $gt: 0 } },
+    ],
+  });
+
+  const results = {
+    total: plans.length,
+    success: 0,
+    failed: 0,
+    skipped: 0,
+    details: [],
+  };
+
+  for (const plan of plans) {
+    try {
+      const syncResult = await googlePlayBillingService.syncSubscriptionPlan(plan);
+
+      if (syncResult.success) {
+        // Note: Google Play subscriptions use the same product ID for both sandbox and production
+        if (syncResult.monthlyProductId) {
+          plan.googlePlayMonthlySubscriptionId = syncResult.monthlyProductId;
+          plan.googlePlaySandboxMonthlySubscriptionId = syncResult.monthlyProductId; // Same ID for sandbox
+        }
+        if (syncResult.annualProductId) {
+          plan.googlePlayAnnualSubscriptionId = syncResult.annualProductId;
+          plan.googlePlaySandboxAnnualSubscriptionId = syncResult.annualProductId; // Same ID for sandbox
+        }
+        plan.googlePlaySyncStatus = 'synced';
+        plan.googlePlaySyncError = null;
+        plan.googlePlayLastSyncAt = new Date();
+        await plan.save();
+
+        results.success++;
+        results.details.push({
+          planId: plan._id,
+          planName: plan.name,
+          status: 'success',
+          monthlyProductId: syncResult.monthlyProductId,
+          annualProductId: syncResult.annualProductId,
+        });
+      } else if (syncResult.skipped) {
+        results.skipped++;
+        results.details.push({
+          planId: plan._id,
+          planName: plan.name,
+          status: 'skipped',
+          reason: syncResult.reason,
+        });
+      } else {
+        plan.googlePlaySyncStatus = 'failed';
+        plan.googlePlaySyncError = syncResult.errors?.join(', ') || 'Unknown error';
+        await plan.save();
+
+        results.failed++;
+        results.details.push({
+          planId: plan._id,
+          planName: plan.name,
+          status: 'failed',
+          errors: syncResult.errors,
+        });
+      }
+    } catch (error) {
+      plan.googlePlaySyncStatus = 'failed';
+      plan.googlePlaySyncError = error.message;
+      await plan.save();
+
+      results.failed++;
+      results.details.push({
+        planId: plan._id,
+        planName: plan.name,
+        status: 'failed',
+        error: error.message,
+      });
+    }
+  }
+
+  res.json({
+    message: `Synced ${results.success} of ${results.total} plans with Google Play`,
+    data: results,
   });
 });
 
@@ -452,12 +883,40 @@ exports.deleteSubscriptionPlan = catchAsync(async (req, res) => {
     throw new AppError("Subscription plan not found", 404);
   }
 
+  // Archive subscriptions in Google Play Console if they exist
+  let googlePlayArchiveResult = null;
+  if (!plan.isCustom && (plan.googlePlayMonthlySubscriptionId || plan.googlePlayAnnualSubscriptionId)) {
+    try {
+      console.log(`Archiving Google Play subscriptions for: ${plan.name}`);
+      
+      // Archive monthly subscription if it exists
+      if (plan.googlePlayMonthlySubscriptionId) {
+        await googlePlayBillingService.archiveSubscription(plan.googlePlayMonthlySubscriptionId);
+        console.log(`✅ Archived monthly subscription: ${plan.googlePlayMonthlySubscriptionId}`);
+      }
+
+      // Archive annual subscription if it exists
+      if (plan.googlePlayAnnualSubscriptionId) {
+        await googlePlayBillingService.archiveSubscription(plan.googlePlayAnnualSubscriptionId);
+        console.log(`✅ Archived annual subscription: ${plan.googlePlayAnnualSubscriptionId}`);
+      }
+
+      googlePlayArchiveResult = { success: true, archived: true };
+      console.log(`✅ Google Play subscriptions archived for deleted plan: ${plan.name}`);
+    } catch (archiveError) {
+      console.error(`❌ Google Play archive error for plan ${plan.name}:`, archiveError.message);
+      googlePlayArchiveResult = { success: false, error: archiveError.message };
+      // Continue with soft delete even if Google Play archive fails
+    }
+  }
+
   // Soft delete the plan by setting status to "deleted"
   plan.status = "deleted";
   await plan.save();
 
   res.json({
     message: "Subscription plan deleted successfully",
+    googlePlayArchive: googlePlayArchiveResult,
   });
 });
 

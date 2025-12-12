@@ -19,6 +19,10 @@ const PlanSchema = new Schema(
       default: null,
       trim: true,
     },
+    benefits: {
+      type: [String],
+      default: [],
+    },
     icon: {
       type: String,
       default: null,
@@ -83,6 +87,41 @@ const PlanSchema = new Schema(
     },
     paddleYearlyPlanId: {
       type: String,
+      default: null,
+    },
+    // Google Play Billing integration IDs
+    googlePlayMonthlySubscriptionId: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    googlePlayAnnualSubscriptionId: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    googlePlaySandboxMonthlySubscriptionId: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    googlePlaySandboxAnnualSubscriptionId: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    // Google Play sync status
+    googlePlaySyncStatus: {
+      type: String,
+      enum: ['pending', 'synced', 'failed', 'not_applicable'],
+      default: 'pending',
+    },
+    googlePlaySyncError: {
+      type: String,
+      default: null,
+    },
+    googlePlayLastSyncAt: {
+      type: Date,
       default: null,
     },
     // Credit management

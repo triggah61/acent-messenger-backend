@@ -9,7 +9,9 @@ const notificationRouter = require("./notification");
 // const authRouter = require("./auth");
 const callRouter = require("./call");
 const translationRouter = require("./translation");
+const translationSessionRouter = require("./translation-session");
 const subscriptionRouter = require("./subscription");
+const topupRouter = require("./topup");
 const userRouter = express.Router();
 require("express-group-routes");
 
@@ -22,7 +24,9 @@ userRouter.group("/user", (user) => {
   user.use(walletRouter);
   user.use(notificationRouter);
   user.use(translationRouter);
+  user.use(translationSessionRouter);
   user.use(subscriptionRouter);
+  user.use(topupRouter);
   // user.use(authRouter);
   user.use(callRouter);
   user.get("/", (req, res) => {

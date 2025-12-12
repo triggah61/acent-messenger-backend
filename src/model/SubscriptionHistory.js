@@ -72,6 +72,46 @@ const subscriptionHistorySchema = new Schema(
       type: String,
       default: null,
     },
+    // Google Play Billing fields
+    googlePlayPurchaseToken: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    googlePlayOrderId: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    googlePlayTransactionId: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    googlePlayProductId: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    googlePlayAcknowledged: {
+      type: Boolean,
+      default: false,
+    },
+    // Webhook tracking fields
+    webhookProcessedAt: {
+      ...dDefaults,
+    },
+    lastWebhookEventType: {
+      type: String,
+      default: null,
+    },
+    gracePeriodEndsAt: {
+      ...dDefaults,
+    },
+    autoRenewing: {
+      type: Boolean,
+      default: true,
+    },
   },
   {
     timestamps: true,

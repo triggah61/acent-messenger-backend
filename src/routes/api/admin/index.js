@@ -5,6 +5,7 @@ const IsAdmin = require("../../../middleware/IsAdmin");
 const dashboardRouter = require("./dashboard");
 const subscriptionPlanRouter = require("./subscriptionPlan");
 const subscriptionHistoryRouter = require("./subscriptionHistory");
+const creditPackageRouter = require("./creditPackage");
 const configRouter = require("./config");
 const adminRouter = express.Router();
 require("express-group-routes");
@@ -17,6 +18,7 @@ adminRouter.group("/admin", (admin) => {
   admin.use(dashboardRouter);
   admin.use(subscriptionPlanRouter);
   admin.use(subscriptionHistoryRouter);
+  admin.use(creditPackageRouter);
 });
 
 module.exports = adminRouter;

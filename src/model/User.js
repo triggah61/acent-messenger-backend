@@ -50,7 +50,6 @@ const schema = new Schema(
     language: {
       type: String,
       default: 'en', // Default to English
-      enum: ['en', 'es', 'fr', 'de', 'it', 'pt', 'ru', 'zh', 'ja', 'ko', 'ar', 'hi', 'ms'],
     },
     socketId: {
       type: String,

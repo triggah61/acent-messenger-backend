@@ -4,6 +4,7 @@ const SubscriptionPlan = require("../../model/SubscriptionPlan");
 const SubscriptionHistory = require("../../model/SubscriptionHistory");
 const User = require("../../model/User");
 const BalanceService = require("../../services/BalanceService");
+const googlePlayBillingService = require("../../services/GooglePlayBillingService");
 const moment = require("moment");
 const SimpleValidator = require("../../validator/simpleValidator");
 
@@ -17,9 +18,23 @@ const SimpleValidator = require("../../validator/simpleValidator");
 exports.getSubscriptionPlans = catchAsync(async (req, res) => {
   const plans = await SubscriptionPlan.find({
     status: "active",
+    // Only return plans that are synced with Google Play or are custom plans
+    $or: [
+      { isCustom: true }, // Custom plans don't need Google Play sync
+      { 
+        googlePlaySyncStatus: "synced", // Only synced plans
+        $or: [
+          { googlePlayMonthlySubscriptionId: { $exists: true, $ne: null } },
+          { googlePlayAnnualSubscriptionId: { $exists: true, $ne: null } }
+        ]
+      }
+    ]
   })
     .sort({ sortOrder: 1, createdAt: 1 })
     .select("-stripeMonthlyPriceId -stripeYearlyPriceId -paypalMonthlyPlanId -paypalYearlyPlanId -paddleMonthlyPlanId -paddleYearlyPlanId");
+    // Note: Google Play product IDs are included in response for client to query Google Play Store
+
+  console.log(`SubscriptionController: Found ${plans.length} active and synced plans`);
 
   res.json({
     status: "success",
@@ -289,6 +304,297 @@ exports.getSubscriptionHistory = catchAsync(async (req, res) => {
     status: "success",
     message: "Subscription history fetched successfully",
     data: subscriptions,
+  });
+});
+
+/**
+ * Verify and process Google Play subscription purchase
+ * 
+ * @route POST /api/user/subscriptions/verify-google-play
+ * @access Private
+ */
+exports.verifyGooglePlaySubscription = catchAsync(async (req, res) => {
+  const { user } = req;
+
+  // Validate input
+  await SimpleValidator(req.body, {
+    purchaseToken: "required|string",
+    subscriptionId: "required|string",
+    planId: "required|string",
+    intervalType: "required|string|in:month,year",
+  });
+
+  const { purchaseToken, subscriptionId, planId, intervalType } = req.body;
+
+  // Find the subscription plan
+  const plan = await SubscriptionPlan.findOne({
+    _id: planId,
+    status: "active",
+  });
+
+  if (!plan) {
+    throw new AppError("Subscription plan not found or inactive", 404);
+  }
+
+  // Handle custom plans
+  if (plan.isCustom) {
+    throw new AppError("Cannot subscribe to custom plan via Google Play", 400);
+  }
+
+  // Check if this purchase has already been processed (idempotency)
+  const existingSubscription = await SubscriptionHistory.findOne({
+    user: user._id,
+    googlePlayPurchaseToken: purchaseToken,
+    status: "active",
+  });
+
+  if (existingSubscription) {
+    // Purchase already processed, return success with existing record
+    const balanceSummary = await BalanceService.getBalanceSummary(user._id);
+    return res.status(200).json({
+      status: "success",
+      message: "Subscription already processed",
+      data: {
+        subscription: existingSubscription,
+        balance: balanceSummary,
+        alreadyProcessed: true,
+      },
+    });
+  }
+
+  // Verify subscription with Google Play
+  let purchaseVerification;
+  try {
+    purchaseVerification = await googlePlayBillingService.verifySubscription(
+      purchaseToken,
+      subscriptionId
+    );
+  } catch (error) {
+    console.error("SubscriptionController: Google Play verification error:", error);
+    throw new AppError(
+      `Subscription verification failed: ${error.message}`,
+      error.statusCode || 500
+    );
+  }
+
+  // Check if subscription is valid and active
+  if (!purchaseVerification.valid || !purchaseVerification.active) {
+    throw new AppError("Invalid or expired subscription", 400);
+  }
+
+  // Check if subscription is already acknowledged
+  if (purchaseVerification.acknowledgementState === 1) {
+    // Already acknowledged, but not in our database - might be a duplicate
+    // Check by order ID
+    if (purchaseVerification.orderId) {
+      const existingByOrderId = await SubscriptionHistory.findOne({
+        googlePlayOrderId: purchaseVerification.orderId,
+        status: "active",
+      });
+
+      if (existingByOrderId) {
+        const balanceSummary = await BalanceService.getBalanceSummary(user._id);
+        return res.status(200).json({
+          status: "success",
+          message: "Subscription already processed",
+          data: {
+            subscription: existingByOrderId,
+            balance: balanceSummary,
+            alreadyProcessed: true,
+          },
+        });
+      }
+    }
+  }
+
+  // Determine credit amount and expiration date based on interval type
+  let creditToAdd = 0;
+  let subscriptionExpiresAt = null;
+  let paymentCycle = "Monthly";
+  let totalCycle = 1;
+
+  if (intervalType === "month") {
+    creditToAdd = Number(plan.monthlyCredit);
+    subscriptionExpiresAt = new Date(purchaseVerification.expiryTimeMillis);
+    paymentCycle = "Monthly";
+    totalCycle = 1;
+  } else if (intervalType === "year") {
+    creditToAdd = Number(plan.annualMonthlyCredit);
+    subscriptionExpiresAt = new Date(purchaseVerification.expiryTimeMillis);
+    paymentCycle = "Yearly";
+    totalCycle = 12;
+  } else {
+    throw new AppError("Invalid interval type. Must be 'month' or 'year'", 400);
+  }
+
+  // Handle unlimited credit
+  let unlimitedCredit = plan?.unlimitedCredit ?? "no";
+  let unlimitedCreditCap = Number(plan?.unlimitedCreditCap ?? 0);
+  
+  if (unlimitedCredit === "yes") {
+    creditToAdd = unlimitedCreditCap;
+  }
+
+  // Get current user with latest balance
+  let currentUser = await User.findById(user._id);
+  if (!currentUser) {
+    throw new AppError("User not found", 404);
+  }
+
+  // Find existing active subscription (user can only have ONE active subscription)
+  const existingActiveSubscription = await SubscriptionHistory.findOne({
+    user: user._id,
+    status: "active",
+  });
+
+  let remainingBalanceFromOldSubscription = 0;
+  let upgradeNote = null;
+
+  // If user has an existing active subscription, mark it as upgraded
+  if (existingActiveSubscription) {
+    // Get remaining balance from old subscription
+    remainingBalanceFromOldSubscription = Number(existingActiveSubscription.currentCycleBalance ?? 0);
+    
+    // Get old plan name for the note
+    const oldPlan = await SubscriptionPlan.findById(existingActiveSubscription.subscriptionPlan);
+    const oldPlanName = oldPlan ? oldPlan.name : "Previous Plan";
+    
+    // Mark old subscription as upgraded with note
+    upgradeNote = `Upgraded from ${oldPlanName} to ${plan.name}. Remaining balance: ${remainingBalanceFromOldSubscription} credits transferred.`;
+    
+    await SubscriptionHistory.findByIdAndUpdate(existingActiveSubscription._id, {
+      status: "upgraded",
+      cancellationReason: upgradeNote,
+      remarks: existingActiveSubscription.remarks 
+        ? `${existingActiveSubscription.remarks} | ${upgradeNote}`
+        : upgradeNote,
+    });
+  }
+
+  // Calculate total credits to add (new subscription credits + remaining balance from old subscription)
+  const totalCreditsToAdd = Number(creditToAdd) + Number(remainingBalanceFromOldSubscription);
+
+  // Get current subscription balance from user model
+  const currentSubscriptionBalance = Number(currentUser.monthlySubscriptionCreditBalance ?? 0);
+  
+  // Calculate new accumulated subscription balance
+  const newSubscriptionBalance = currentSubscriptionBalance + totalCreditsToAdd;
+
+  // Create new subscription history
+  const subscriptionHistory = await SubscriptionHistory.create({
+    user: user._id,
+    subscriptionPlan: plan._id,
+    cycleType: paymentCycle,
+    totalCycle,
+    cycleCompleted: 1,
+    nextCycleAt: intervalType === "year" 
+      ? moment.utc().add(1, "month").toDate() 
+      : null,
+    subscriptionStartedAt: new Date(purchaseVerification.startTimeMillis),
+    subscriptionEndDate: subscriptionExpiresAt,
+    membership: "pro",
+    remarks: remainingBalanceFromOldSubscription > 0
+      ? `Subscribed to ${plan.name} - ${paymentCycle} via Google Play. Upgraded from previous plan with ${remainingBalanceFromOldSubscription} credits transferred.`
+      : `Subscribed to ${plan.name} - ${paymentCycle} via Google Play`,
+    status: "active",
+    amount: totalCreditsToAdd,
+    currentCycleBalance: totalCreditsToAdd,
+    transactionType: "google_play",
+    transactionId: purchaseVerification.orderId || `google_play_${Date.now()}_${user._id}`,
+    googlePlayPurchaseToken: purchaseToken,
+    googlePlayOrderId: purchaseVerification.orderId || null,
+    googlePlayTransactionId: purchaseVerification.orderId || null,
+    googlePlayProductId: subscriptionId,
+    googlePlayAcknowledged: purchaseVerification.acknowledgementState === 1,
+  });
+
+  // Create credit transaction for the new subscription credits
+  await BalanceService.createTransaction({
+    userId: user._id,
+    amount: creditToAdd,
+    type: "credit",
+    source: unlimitedCredit === "yes" 
+      ? "subscriptionWithUnlimitedCredit" 
+      : "subscription",
+    subscriptionPlan: plan._id,
+    subscriptionHistory: subscriptionHistory._id,
+    remarks: `Subscription: ${plan.name} - ${paymentCycle} (Google Play)`,
+  });
+
+  // If there was a balance transfer, create a transaction for that too
+  if (remainingBalanceFromOldSubscription > 0) {
+    await BalanceService.createTransaction({
+      userId: user._id,
+      amount: remainingBalanceFromOldSubscription,
+      type: "credit",
+      source: "subscriptionUpgrade",
+      subscriptionPlan: plan._id,
+      subscriptionHistory: subscriptionHistory._id,
+      remarks: `Balance transferred from upgraded subscription`,
+    });
+  }
+
+  // Update user model directly with accumulated balance and subscription info
+  await User.findByIdAndUpdate(user._id, {
+    monthlySubscriptionCreditBalance: newSubscriptionBalance,
+    subscriptionExpiresAt,
+    subscriptionStatus: "active",
+    subscriptionPlan: plan._id,
+  });
+
+  // Acknowledge subscription with Google Play (if not already acknowledged)
+  if (purchaseVerification.acknowledgementState === 0) {
+  try {
+      await googlePlayBillingService.acknowledgeSubscription(
+        purchaseToken,
+        subscriptionId
+      );
+      // Update subscription history
+      await SubscriptionHistory.findByIdAndUpdate(subscriptionHistory._id, {
+        googlePlayAcknowledged: true,
+      });
+    } catch (ackError) {
+      console.error(
+        "SubscriptionController: Failed to acknowledge subscription:",
+        ackError
+      );
+      // Don't fail the request if acknowledgment fails - subscription is already processed
+    }
+  }
+
+  // Get balance summary
+  const balanceSummary = await BalanceService.getBalanceSummary(user._id);
+
+  res.status(201).json({
+    status: "success",
+    message: existingActiveSubscription 
+      ? "Successfully upgraded subscription plan" 
+      : "Successfully subscribed to plan",
+    data: {
+      subscription: subscriptionHistory,
+      balance: balanceSummary,
+      plan: {
+        _id: plan._id,
+        name: plan.name,
+        subtitle: plan.subtitle,
+        intervalType,
+        creditAdded: creditToAdd,
+        totalCreditsAdded: totalCreditsToAdd,
+      },
+      purchase: {
+        orderId: purchaseVerification.orderId,
+        autoRenewing: purchaseVerification.autoRenewing,
+        expiryTime: purchaseVerification.expiryTimeMillis,
+      },
+      upgrade: existingActiveSubscription ? {
+        wasUpgraded: true,
+        previousPlanId: existingActiveSubscription.subscriptionPlan,
+        balanceTransferred: remainingBalanceFromOldSubscription,
+        note: upgradeNote,
+      } : {
+        wasUpgraded: false,
+      },
+    },
   });
 });
 

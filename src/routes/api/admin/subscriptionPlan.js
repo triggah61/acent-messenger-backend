@@ -45,6 +45,36 @@ subscriptionPlanRouter.group("/subscription-plans", (plan) => {
     HasPermission("subscription.delete"),
     SubscriptionPlanController.deleteSubscriptionPlan
   );
+
+  // Google Play Billing Integration Routes
+  
+  // Get Google Play Billing service status
+  plan.get(
+    "/google-play/status",
+    HasPermission("subscription.read"),
+    SubscriptionPlanController.getGooglePlayStatus
+  );
+
+  // Sync all plans with Google Play
+  plan.post(
+    "/google-play/sync-all",
+    HasPermission("subscription.update"),
+    SubscriptionPlanController.syncAllPlansWithGooglePlay
+  );
+
+  // Sync a specific plan with Google Play
+  plan.post(
+    "/:id/google-play/sync",
+    HasPermission("subscription.update"),
+    SubscriptionPlanController.syncPlanWithGooglePlay
+  );
+
+  // Verify subscription exists in Google Play Console
+  plan.get(
+    "/:id/google-play/verify",
+    HasPermission("subscription.read"),
+    SubscriptionPlanController.verifySubscriptionInGooglePlay
+  );
 });
 
 module.exports = subscriptionPlanRouter;

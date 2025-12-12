@@ -52,6 +52,27 @@ exports.getConfig = catchAsync(async (req, res) => {
   data.assemblyaiApiKey = process.env.ASSEMBLYAI_API_KEY || '';
   data.assemblyaiEnabled = !!process.env.ASSEMBLYAI_API_KEY;
 
+  // Add Fee Configuration with defaults if not set
+  if (!data.FEE_CONFIGURATION) {
+    data.FEE_CONFIGURATION = JSON.stringify({
+      inputCreditPerSec: 0.5,    // Default: 0.5 credits per second of audio input
+      outputCreditPerChar: 0.01  // Default: 0.01 credits per character of text output
+    });
+  }
+  
+  // Parse FEE_CONFIGURATION if it's a string (for easier frontend consumption)
+  try {
+    if (typeof data.FEE_CONFIGURATION === 'string') {
+      data.FEE_CONFIGURATION = JSON.parse(data.FEE_CONFIGURATION);
+    }
+  } catch (e) {
+    // If parsing fails, set defaults
+    data.FEE_CONFIGURATION = {
+      inputCreditPerSec: 0.5,
+      outputCreditPerChar: 0.01
+    };
+  }
+
   res.json({
     message: "Config fetched successfully",
     data,
