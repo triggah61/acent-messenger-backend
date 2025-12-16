@@ -34,6 +34,7 @@ exports.handleGooglePlayWebhook = catchAsync(async (req, res) => {
 async function processWebhookAsync(payload) {
   try {
     console.log("WebhookController: Processing webhook notification...");
+    console.log("WebhookController: Raw payload:", JSON.stringify(payload, null, 2));
 
     // Parse notification based on Google Play RTDN format
     // Google Play sends notifications via Pub/Sub, which wraps the data
@@ -41,15 +42,50 @@ async function processWebhookAsync(payload) {
 
     // Handle Pub/Sub message format
     if (payload.message && payload.message.data) {
-      // Decode base64 data if present
+      // Decode base64 data from Pub/Sub
       const messageData = payload.message.data;
+      console.log("WebhookController: Decoding Pub/Sub message...");
       const decodedData = Buffer.from(messageData, "base64").toString("utf-8");
-      notificationData = JSON.parse(decodedData);
+      console.log("WebhookController: Decoded data:", decodedData);
+      
+      try {
+        notificationData = JSON.parse(decodedData);
+        console.log("WebhookController: Parsed notification data:", JSON.stringify(notificationData, null, 2));
+      } catch (parseError) {
+        console.error("WebhookController: Failed to parse decoded data:", parseError);
+        // If it's a test notification, it might just be a simple string
+        console.log("WebhookController: Test notification detected, acknowledging...");
+        return { success: true, message: "Test notification acknowledged" };
+      }
     } else if (payload.subscriptionNotification) {
       // Direct notification format (for testing)
       notificationData = payload;
+      console.log("WebhookController: Direct notification format detected");
+    } else if (payload.testNotification) {
+      // Google Play Console test notification
+      console.log("WebhookController: ✅ Test notification from Play Console received!");
+      console.log("WebhookController: Test notification data:", JSON.stringify(payload.testNotification, null, 2));
+      return { success: true, message: "Test notification received successfully" };
     } else {
+      // Log the payload structure for debugging
+      console.log("WebhookController: Unknown payload structure. Keys:", Object.keys(payload));
+      
+      // Check if it's an empty or minimal payload (could be a ping)
+      if (Object.keys(payload).length === 0 || 
+          (payload.message && !payload.message.data)) {
+        console.log("WebhookController: Empty/ping notification, acknowledging...");
+        return { success: true, message: "Ping acknowledged" };
+      }
+      
+      console.error("WebhookController: Invalid webhook payload format");
+      console.error("WebhookController: Payload:", JSON.stringify(payload, null, 2));
       throw new Error("Invalid webhook payload format");
+    }
+
+    // Check if this is a test notification within the decoded data
+    if (notificationData.testNotification) {
+      console.log("WebhookController: ✅ Test notification received and decoded!");
+      return { success: true, message: "Test notification processed" };
     }
 
     // Verify notification structure
@@ -58,6 +94,8 @@ async function processWebhookAsync(payload) {
     );
 
     if (!isValid) {
+      console.error("WebhookController: Notification validation failed");
+      console.error("WebhookController: Notification data:", JSON.stringify(notificationData, null, 2));
       throw new AppError("Invalid webhook notification", 400);
     }
 
@@ -68,7 +106,7 @@ async function processWebhookAsync(payload) {
     );
 
     console.log(
-      `WebhookController: Webhook processed successfully - ${notificationData.subscriptionNotification?.notificationType}`
+      `WebhookController: ✅ Webhook processed successfully - ${notificationData.subscriptionNotification?.notificationType}`
     );
 
     return result;

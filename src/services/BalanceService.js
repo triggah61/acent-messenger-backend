@@ -96,6 +96,28 @@ exports.deductCredit = async (userId, amount, consumptionReason = "") => {
     topUpCreditBalance: newTopUpBalance,
   });
 
+  // Update active subscription's currentCycleBalance if subscription credits were deducted
+  if (subscriptionDeductable > 0) {
+    // Find the first active subscription (user should only have one, but pick first if multiple)
+    const activeSubscription = await SubscriptionHistory.findOne({
+      user: new mongoose.Types.ObjectId(userId),
+      status: "active",
+      $or: [
+        { subscriptionEndDate: { $gte: moment.utc().toDate() } },
+        { subscriptionEndDate: null },
+      ],
+    })
+      .sort({ createdAt: -1 }); // Latest first
+
+    if (activeSubscription) {
+      // Update currentCycleBalance to match the new subscription balance
+      // This ensures currentCycleBalance always reflects the actual remaining balance
+      await SubscriptionHistory.findByIdAndUpdate(activeSubscription._id, {
+        currentCycleBalance: newSubscriptionBalance,
+      });
+    }
+  }
+
   return true;
 };
 
@@ -164,6 +186,18 @@ exports.syncUserBalanceFromSubscriptions = async (userId) => {
     updateData.subscriptionExpiresAt = activeSubscription.subscriptionEndDate;
     updateData.subscriptionPlan = activeSubscription.subscriptionPlan;
     updateData.subscriptionStatus = "active";
+    
+    // Sync currentCycleBalance with monthlySubscriptionCreditBalance
+    // Get current user balance
+    const user = await User.findById(userId);
+    if (user) {
+      const currentBalance = Number(user.monthlySubscriptionCreditBalance || 0);
+      // Update subscription's currentCycleBalance to match user's balance
+      // This ensures they stay in sync
+      await SubscriptionHistory.findByIdAndUpdate(activeSubscription._id, {
+        currentCycleBalance: currentBalance,
+      });
+    }
   } else {
     // Check if subscription expired
     const user = await User.findById(userId);

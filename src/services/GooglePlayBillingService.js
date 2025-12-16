@@ -329,6 +329,90 @@ class GooglePlayBillingService {
   }
 
   /**
+   * Generate regional configs for all major Google Play regions
+   * This ensures subscriptions are available worldwide, not just in one country
+   * @param {Number} priceAmountMicros - Price in micros (e.g., 9990000 for $9.99)
+   * @param {String} priceCurrencyCode - Currency code (e.g., 'USD')
+   * @returns {Array} Array of regional config objects
+   */
+  _generateAllRegionsConfig(priceAmountMicros, priceCurrencyCode = 'USD') {
+    // List of major Google Play regions
+    // Using USD as base currency - Google Play will handle currency conversion
+    const regions = [
+      'US', // United States
+      'GB', // United Kingdom
+      'CA', // Canada
+      'AU', // Australia
+      'DE', // Germany
+      'FR', // France
+      'ES', // Spain
+      'IT', // Italy
+      'NL', // Netherlands
+      'BE', // Belgium
+      'AT', // Austria
+      'CH', // Switzerland
+      'SE', // Sweden
+      'NO', // Norway
+      'DK', // Denmark
+      'FI', // Finland
+      'IE', // Ireland
+      'PT', // Portugal
+      'PL', // Poland
+      'CZ', // Czech Republic
+      'HU', // Hungary
+      'RO', // Romania
+      'BG', // Bulgaria
+      'HR', // Croatia
+      'SK', // Slovakia
+      'SI', // Slovenia
+      'GR', // Greece
+      'JP', // Japan
+      'KR', // South Korea
+      'TW', // Taiwan
+      'HK', // Hong Kong
+      'SG', // Singapore
+      'MY', // Malaysia
+      'TH', // Thailand
+      'ID', // Indonesia
+      'PH', // Philippines
+      'VN', // Vietnam
+      'IN', // India
+      'PK', // Pakistan
+      'BD', // Bangladesh
+      'AE', // United Arab Emirates
+      'SA', // Saudi Arabia
+      'EG', // Egypt
+      'ZA', // South Africa
+      'NG', // Nigeria
+      'KE', // Kenya
+      'BR', // Brazil
+      'MX', // Mexico
+      'AR', // Argentina
+      'CL', // Chile
+      'CO', // Colombia
+      'PE', // Peru
+      'NZ', // New Zealand
+      'RU', // Russia
+      'UA', // Ukraine
+      'TR', // Turkey
+      'IL', // Israel
+    ];
+
+    const priceUnits = Math.floor(priceAmountMicros / 1000000).toString();
+    const priceNanos = (priceAmountMicros % 1000000) * 1000;
+
+    return regions.map(regionCode => ({
+      regionCode: regionCode,
+      newSubscriberAvailability: true,
+      price: {
+        currencyCode: priceCurrencyCode,
+        units: priceUnits,
+        nanos: priceNanos,
+      },
+    }));
+  }
+
+  /**
    * Generate a valid product ID from plan name
    * Google Play subscription product IDs can contain: lowercase letters, numbers, underscores (_), and periods (.)
    * NOTE: Hyphens (-) are NOT allowed in subscription product IDs, only in base plan IDs
@@ -422,17 +506,9 @@ class GooglePlayBillingService {
                 resubscribeState: 'RESUBSCRIBE_STATE_ACTIVE',
                 prorationMode: 'SUBSCRIPTION_PRORATION_MODE_CHARGE_ON_NEXT_BILLING_DATE', // Correct enum value with SUBSCRIPTION_ prefix
               },
-              regionalConfigs: [
-                {
-                  regionCode: 'US',
-                  newSubscriberAvailability: true,
-                  price: {
-                    currencyCode: priceCurrencyCode,
-                    units: Math.floor(priceAmountMicros / 1000000).toString(),
-                    nanos: (priceAmountMicros % 1000000) * 1000,
-                  },
-                },
-              ],
+              // Make subscription available in ALL regions where Google Play operates
+              // This ensures users in any country can subscribe
+              regionalConfigs: this._generateAllRegionsConfig(priceAmountMicros, priceCurrencyCode),
             },
           ],
         },
@@ -839,12 +915,30 @@ class GooglePlayBillingService {
    */
   async verifyWebhookNotification(notificationData) {
     try {
-      // Validate notification structure
+      console.log("GooglePlayBillingService: Verifying webhook notification...");
+      
+      // Handle test notifications from Play Console
+      if (notificationData.testNotification) {
+        console.log("GooglePlayBillingService: ✅ Test notification - valid");
+        return true;
+      }
+
+      // Handle one-time product notifications (not subscriptions)
+      if (notificationData.oneTimeProductNotification) {
+        console.log("GooglePlayBillingService: One-time product notification detected");
+        // You can handle these separately if needed
+        return true;
+      }
+
+      // Validate subscription notification structure
       if (!notificationData || !notificationData.subscriptionNotification) {
+        console.log("GooglePlayBillingService: No subscriptionNotification field found");
+        console.log("GooglePlayBillingService: Available fields:", Object.keys(notificationData || {}));
         return false;
       }
 
       const { subscriptionNotification } = notificationData;
+      console.log("GooglePlayBillingService: Subscription notification:", JSON.stringify(subscriptionNotification, null, 2));
 
       // Check required fields
       if (
@@ -852,11 +946,17 @@ class GooglePlayBillingService {
         !subscriptionNotification.subscriptionId ||
         !subscriptionNotification.notificationType
       ) {
+        console.log("GooglePlayBillingService: Missing required fields:");
+        console.log("  - purchaseToken:", !!subscriptionNotification.purchaseToken);
+        console.log("  - subscriptionId:", !!subscriptionNotification.subscriptionId);
+        console.log("  - notificationType:", !!subscriptionNotification.notificationType);
         return false;
       }
 
-      // Valid notification types
+      // Valid notification types (numeric values from Google Play)
+      // https://developer.android.com/google/play/billing/rtdn-reference#sub
       const validNotificationTypes = [
+        // String types (legacy)
         "SUBSCRIPTION_PURCHASED",
         "SUBSCRIPTION_RENEWED",
         "SUBSCRIPTION_CANCELED",
@@ -870,15 +970,33 @@ class GooglePlayBillingService {
         "SUBSCRIPTION_IN_GRACE_PERIOD",
         "SUBSCRIPTION_RECOVERED",
         "SUBSCRIPTION_ON_HOLD",
+        // Numeric types (current)
+        1,  // SUBSCRIPTION_RECOVERED
+        2,  // SUBSCRIPTION_RENEWED
+        3,  // SUBSCRIPTION_CANCELED
+        4,  // SUBSCRIPTION_PURCHASED
+        5,  // SUBSCRIPTION_ON_HOLD
+        6,  // SUBSCRIPTION_IN_GRACE_PERIOD
+        7,  // SUBSCRIPTION_RESTARTED
+        8,  // SUBSCRIPTION_PRICE_CHANGE_CONFIRMED
+        9,  // SUBSCRIPTION_DEFERRED
+        10, // SUBSCRIPTION_PAUSED
+        11, // SUBSCRIPTION_PAUSE_SCHEDULE_CHANGED
+        12, // SUBSCRIPTION_REVOKED
+        13, // SUBSCRIPTION_EXPIRED
+        20, // SUBSCRIPTION_PENDING_PURCHASE_CANCELED
       ];
 
-      if (!validNotificationTypes.includes(subscriptionNotification.notificationType)) {
+      const notificationType = subscriptionNotification.notificationType;
+      if (!validNotificationTypes.includes(notificationType)) {
         console.warn(
-          `GooglePlayBillingService: Invalid notification type: ${subscriptionNotification.notificationType}`
+          `GooglePlayBillingService: Unknown notification type: ${notificationType}`
         );
-        return false;
+        // Still return true to process it - we can handle unknown types gracefully
+        console.log("GooglePlayBillingService: Will attempt to process unknown notification type");
       }
 
+      console.log("GooglePlayBillingService: ✅ Notification verified successfully");
       return true;
     } catch (error) {
       console.error("GooglePlayBillingService: Webhook verification error:", error);

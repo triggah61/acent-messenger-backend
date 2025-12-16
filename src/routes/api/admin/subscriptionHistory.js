@@ -15,11 +15,39 @@ subscriptionHistoryRouter.group("/subscription-history", (history) => {
     SubscriptionHistoryController.getAllSubscriptionHistory
   );
 
+  // Get all subscription history with detailed events/payments summary
+  history.get(
+    "/all-detailed",
+    HasPermission("subscription.read"),
+    SubscriptionHistoryController.getAllSubscriptionHistoryDetailed
+  );
+
   // Get subscribed users for filter dropdown
   history.get(
     "/subscribed-users",
     HasPermission("subscription.read"),
     SubscriptionHistoryController.getSubscribedUsers
+  );
+
+  // Get detailed subscription with full events and payments
+  history.get(
+    "/:id/details",
+    HasPermission("subscription.read"),
+    SubscriptionHistoryController.getSubscriptionDetails
+  );
+
+  // Get subscription events (paginated)
+  history.get(
+    "/:id/events",
+    HasPermission("subscription.read"),
+    SubscriptionHistoryController.getSubscriptionEvents
+  );
+
+  // Get subscription payments (paginated)
+  history.get(
+    "/:id/payments",
+    HasPermission("subscription.read"),
+    SubscriptionHistoryController.getSubscriptionPayments
   );
 });
 

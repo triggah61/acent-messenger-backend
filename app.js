@@ -44,6 +44,10 @@ const winston = require("winston");
  */
 let app = express();
 
+// Trust proxy - required when behind a reverse proxy (Nginx, load balancer, etc.)
+// This enables correct IP detection for rate limiting and logging
+app.set('trust proxy', true);
+
 // CORS configuration
 app.use(cors({ origin: "*" }));
 

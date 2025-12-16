@@ -68,13 +68,6 @@ subscriptionPlanRouter.group("/subscription-plans", (plan) => {
     HasPermission("subscription.update"),
     SubscriptionPlanController.syncPlanWithGooglePlay
   );
-
-  // Verify subscription exists in Google Play Console
-  plan.get(
-    "/:id/google-play/verify",
-    HasPermission("subscription.read"),
-    SubscriptionPlanController.verifySubscriptionInGooglePlay
-  );
 });
 
 module.exports = subscriptionPlanRouter;

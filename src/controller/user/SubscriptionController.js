@@ -471,16 +471,36 @@ exports.verifyGooglePlaySubscription = catchAsync(async (req, res) => {
     });
   }
 
-  // Calculate total credits to add (new subscription credits + remaining balance from old subscription)
+  // Calculate total credits to add
+  // On upgrade: Transfer remaining balance from old subscription (one-time transfer)
+  // On next monthly distribution/renewal: Balance will reset to new credits only (use it or lose it)
   const totalCreditsToAdd = Number(creditToAdd) + Number(remainingBalanceFromOldSubscription);
 
   // Get current subscription balance from user model
   const currentSubscriptionBalance = Number(currentUser.monthlySubscriptionCreditBalance ?? 0);
   
-  // Calculate new accumulated subscription balance
-  const newSubscriptionBalance = currentSubscriptionBalance + totalCreditsToAdd;
+  // Calculate new balance:
+  // - Upgrade: Transfer old balance + new credits (will reset on next cycle)
+  // - New purchase: Reset to new credits only (old balance expires)
+  const expiredCredits = existingActiveSubscription ? 0 : currentSubscriptionBalance;
+  const newSubscriptionBalance = existingActiveSubscription 
+    ? currentSubscriptionBalance + totalCreditsToAdd // Upgrade: add transferred balance
+    : totalCreditsToAdd; // New purchase: reset to new credits (old balance expires)
 
-  // Create new subscription history
+  // Prepare purchase start and expiry dates
+  const purchaseStartDate = purchaseVerification.startTimeMillis 
+    ? new Date(purchaseVerification.startTimeMillis) 
+    : new Date();
+  
+  // Determine price from plan
+  let purchaseAmount = 0;
+  if (intervalType === "month" || intervalType === "monthly") {
+    purchaseAmount = Number(plan.monthlyPrice || 0);
+  } else {
+    purchaseAmount = Number(plan.annualPrice || plan.monthlyPrice * 12 || 0);
+  }
+
+  // Create new subscription history with events and payments
   const subscriptionHistory = await SubscriptionHistory.create({
     user: user._id,
     subscriptionPlan: plan._id,
@@ -490,14 +510,14 @@ exports.verifyGooglePlaySubscription = catchAsync(async (req, res) => {
     nextCycleAt: intervalType === "year" 
       ? moment.utc().add(1, "month").toDate() 
       : null,
-    subscriptionStartedAt: new Date(purchaseVerification.startTimeMillis),
+    subscriptionStartedAt: purchaseStartDate,
     subscriptionEndDate: subscriptionExpiresAt,
     membership: "pro",
     remarks: remainingBalanceFromOldSubscription > 0
       ? `Subscribed to ${plan.name} - ${paymentCycle} via Google Play. Upgraded from previous plan with ${remainingBalanceFromOldSubscription} credits transferred.`
       : `Subscribed to ${plan.name} - ${paymentCycle} via Google Play`,
     status: "active",
-    amount: totalCreditsToAdd,
+    amount: purchaseAmount,
     currentCycleBalance: totalCreditsToAdd,
     transactionType: "google_play",
     transactionId: purchaseVerification.orderId || `google_play_${Date.now()}_${user._id}`,
@@ -506,6 +526,51 @@ exports.verifyGooglePlaySubscription = catchAsync(async (req, res) => {
     googlePlayTransactionId: purchaseVerification.orderId || null,
     googlePlayProductId: subscriptionId,
     googlePlayAcknowledged: purchaseVerification.acknowledgementState === 1,
+    autoRenewing: purchaseVerification.autoRenewing !== false,
+    renewalCount: 0,
+    totalAmountPaid: purchaseAmount,
+    totalCreditsReceived: totalCreditsToAdd,
+    // Initial event
+    events: [{
+      eventType: remainingBalanceFromOldSubscription > 0 ? "UPGRADE" : "SUBSCRIPTION_PURCHASED",
+      eventTime: new Date(),
+      orderId: purchaseVerification.orderId,
+      purchaseToken: purchaseToken,
+      expiryTimeAtEvent: subscriptionExpiresAt,
+      autoRenewingAtEvent: purchaseVerification.autoRenewing !== false,
+      creditsChanged: totalCreditsToAdd,
+      source: 'app_purchase',
+      metadata: {
+        subscriptionId,
+        planName: plan.name,
+        intervalType,
+        wasUpgrade: remainingBalanceFromOldSubscription > 0,
+        transferredCredits: remainingBalanceFromOldSubscription,
+        // Credit expiration tracking (for new purchases, not upgrades)
+        expiredCredits: expiredCredits, // Old credits that expired (use it or lose it)
+        previousBalance: expiredCredits,
+        newBalance: newSubscriptionBalance,
+      },
+    }],
+    // Initial payment record
+    payments: [{
+      paymentTime: purchaseStartDate,
+      amount: purchaseAmount,
+      currency: 'USD',
+      orderId: purchaseVerification.orderId,
+      transactionId: purchaseVerification.orderId,
+      status: 'completed',
+      paymentType: remainingBalanceFromOldSubscription > 0 ? 'upgrade' : 'initial',
+      periodStart: purchaseStartDate,
+      periodEnd: subscriptionExpiresAt,
+      creditsGranted: totalCreditsToAdd,
+      metadata: {
+        subscriptionId,
+        purchaseToken,
+        planName: plan.name,
+        source: 'google_play',
+      },
+    }],
   });
 
   // Create credit transaction for the new subscription credits
@@ -540,6 +605,12 @@ exports.verifyGooglePlaySubscription = catchAsync(async (req, res) => {
     subscriptionExpiresAt,
     subscriptionStatus: "active",
     subscriptionPlan: plan._id,
+  });
+
+  // Sync currentCycleBalance to match monthlySubscriptionCreditBalance
+  // This ensures currentCycleBalance always reflects the actual remaining balance
+  await SubscriptionHistory.findByIdAndUpdate(subscriptionHistory._id, {
+    currentCycleBalance: newSubscriptionBalance,
   });
 
   // Acknowledge subscription with Google Play (if not already acknowledged)

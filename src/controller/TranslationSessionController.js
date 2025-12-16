@@ -236,6 +236,7 @@ exports.stopSession = catchAsync(async (req, res) => {
       const currentUser = await User.findById(userId);
       let topUpBalance = Number(currentUser.topUpCreditBalance || 0);
       let subscriptionBalance = Number(currentUser.monthlySubscriptionCreditBalance || 0);
+      const initialSubscriptionBalance = subscriptionBalance; // Store initial value for comparison
       const currentBalance = topUpBalance + subscriptionBalance;
       
       console.log('TranslationSessionController: 💰 Credit Deduction Info:');
@@ -268,6 +269,31 @@ exports.stopSession = catchAsync(async (req, res) => {
           monthlySubscriptionCreditBalance: subscriptionBalance,
           topUpCreditBalance: topUpBalance,
         });
+        
+        // Update active subscription's currentCycleBalance if subscription credits were deducted
+        if (subscriptionBalance < initialSubscriptionBalance) {
+          const SubscriptionHistory = require("../model/SubscriptionHistory");
+          const mongoose = require("mongoose");
+          const moment = require("moment");
+          
+          // Find the first active subscription (user should only have one, but pick first if multiple)
+          const activeSubscription = await SubscriptionHistory.findOne({
+            user: new mongoose.Types.ObjectId(userId),
+            status: "active",
+            $or: [
+              { subscriptionEndDate: { $gte: moment.utc().toDate() } },
+              { subscriptionEndDate: null },
+            ],
+          })
+            .sort({ createdAt: -1 }); // Latest first
+
+          if (activeSubscription) {
+            // Update currentCycleBalance to match the new subscription balance
+            await SubscriptionHistory.findByIdAndUpdate(activeSubscription._id, {
+              currentCycleBalance: subscriptionBalance,
+            });
+          }
+        }
         
         // Create transaction record
         const CreditTransaction = require("../model/CreditTransaction");
