@@ -494,6 +494,26 @@ class WebhookHandlerService {
     const newTotalCycle = previousTotalCycle + cyclesToAdd;
     const newCycleCompleted = previousCycleCompleted + 1; // First cycle of new period
 
+    // Get current user balance to track expired credits BEFORE adding event
+    // This must be done before addEvent because expiredCredits is used in metadata
+    const userId = subscriptionHistory.user?._id 
+      ? subscriptionHistory.user._id.toString() 
+      : subscriptionHistory.user?.toString() || subscriptionHistory.user;
+    
+    let expiredCredits = 0;
+    if (userId) {
+      const user = await User.findById(userId);
+      if (user) {
+        // Old credits expire (use it or lose it model)
+        // Each renewal cycle resets the balance to new credits only
+        expiredCredits = Number(user.monthlySubscriptionCreditBalance || 0);
+      }
+    }
+    
+    // RESET balance to new credits only (old credits don't carry over)
+    // Each renewal cycle's credits are independent and expire at the end of that cycle
+    const newSubscriptionBalance = creditToAdd;
+
     // Add event to history
     subscriptionHistory.addEvent({
       eventType: "SUBSCRIPTION_RENEWED",
@@ -544,25 +564,6 @@ class WebhookHandlerService {
         },
       });
     }
-
-    // Get current user balance to track expired credits
-    const userId = subscriptionHistory.user?._id 
-      ? subscriptionHistory.user._id.toString() 
-      : subscriptionHistory.user?.toString() || subscriptionHistory.user;
-    
-    let expiredCredits = 0;
-    if (userId) {
-      const user = await User.findById(userId);
-      if (user) {
-        // Old credits expire (use it or lose it model)
-        // Each renewal cycle resets the balance to new credits only
-        expiredCredits = Number(user.monthlySubscriptionCreditBalance || 0);
-      }
-    }
-    
-    // RESET balance to new credits only (old credits don't carry over)
-    // Each renewal cycle's credits are independent and expire at the end of that cycle
-    const newSubscriptionBalance = creditToAdd;
 
     // Update subscription history fields
     subscriptionHistory.status = "active";
