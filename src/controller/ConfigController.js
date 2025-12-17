@@ -33,24 +33,9 @@ exports.getConfig = catchAsync(async (req, res) => {
     { code: 'ms', name: 'Malay', nativeName: 'Bahasa Melayu' }
   ];
 
-  // Add TTS configuration
-  data.ttsProvider = 'elevenlabs';
-  data.elevenlabsApiKey = process.env.ELEVENLABS_API_KEY || '';
-  data.elevenlabsBaseUrl = process.env.ELEVENLABS_BASE_URL || 'https://api.elevenlabs.io/v1';
-  data.ttsSettings = {
-    defaultSpeed: 1.0,
-    defaultPitch: 1.0,
-    defaultStability: 0.5,
-    defaultSimilarityBoost: 0.75,
-  };
-
   // Add Google Speech-to-Text configuration for speaker diarization
   data.googleSttApiKey = process.env.GOOGLE_STT_API_KEY || '';
   data.googleSttEnabled = !!process.env.GOOGLE_STT_API_KEY;
-
-  // Add AssemblyAI configuration for real-time transcription
-  data.assemblyaiApiKey = process.env.ASSEMBLYAI_API_KEY || '';
-  data.assemblyaiEnabled = !!process.env.ASSEMBLYAI_API_KEY;
 
   // Add Fee Configuration with defaults if not set
   if (!data.FEE_CONFIGURATION) {

@@ -8,6 +8,7 @@ dashboardRouter.group("/dashboard", (dashboard) => {
   dashboard.use(Authenticated);
   dashboard.get("/", DashboardController.getDashboard);
   dashboard.get("/latest-subscriptions", DashboardController.getLatestSubscriptions);
+  dashboard.get("/monthly-earnings", DashboardController.getMonthlyEarnings);
 });
 
 module.exports = dashboardRouter;
