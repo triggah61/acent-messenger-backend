@@ -28,7 +28,7 @@ class WebhookHandlerService {
     const subscriptionId = subscriptionNotification?.subscriptionId;
     const rawNotificationType = subscriptionNotification?.notificationType;
     const notificationVersion = subscriptionNotification?.version || notificationData.version;
-    
+
     // Convert numeric notification type to string for database storage
     // Google Play sends numeric types: https://developer.android.com/google/play/billing/rtdn-reference#sub
     const notificationTypeMap = {
@@ -126,19 +126,19 @@ class WebhookHandlerService {
           
           console.log(`WebhookHandlerService: ✅ Created subscription record from webhook: ${subscriptionHistory._id}`);
         } else {
-          console.warn(
-            `WebhookHandlerService: SubscriptionHistory not found for purchaseToken: ${purchaseToken}`
-          );
+        console.warn(
+          `WebhookHandlerService: SubscriptionHistory not found for purchaseToken: ${purchaseToken}`
+        );
           
           // Log the webhook for debugging but mark as pending
           // It might be processed later when the subscription record exists
-          webhookLog.status = "ignored";
+        webhookLog.status = "ignored";
           webhookLog.errorMessage = `SubscriptionHistory not found for ${notificationType} event. Purchase may not have been processed yet.`;
-          await webhookLog.save();
-          return {
-            success: false,
+        await webhookLog.save();
+        return {
+          success: false,
             message: "SubscriptionHistory not found - event logged for reference",
-          };
+        };
         }
       }
 
@@ -264,10 +264,10 @@ class WebhookHandlerService {
       // Note: subscription history is already updated in individual handlers now
       // This is just a fallback to ensure lastWebhookEventType is always set
       if (!result.eventAdded) {
-        await SubscriptionHistory.findByIdAndUpdate(subscriptionHistory._id, {
-          webhookProcessedAt: new Date(),
-          lastWebhookEventType: notificationType,
-        });
+      await SubscriptionHistory.findByIdAndUpdate(subscriptionHistory._id, {
+        webhookProcessedAt: new Date(),
+        lastWebhookEventType: notificationType,
+      });
       }
 
       return {
@@ -310,7 +310,7 @@ class WebhookHandlerService {
 
     // Get subscription plan to determine credits and amount
     const plan = await SubscriptionPlan.findById(subscriptionHistory.subscriptionPlan);
-    
+
     // Calculate expiration date
     const expiryTime = moment(verification.expiryTimeMillis);
     const subscriptionEndDate = expiryTime.toDate();
@@ -368,7 +368,7 @@ class WebhookHandlerService {
           purchaseToken,
           source: 'google_play_webhook',
         },
-      });
+    });
     }
 
     // Get current user balance to track expired credits
@@ -451,7 +451,7 @@ class WebhookHandlerService {
 
     // Calculate previous expiry for period start
     const previousExpiryDate = subscriptionHistory.subscriptionEndDate || new Date();
-    
+
     // Calculate new expiration and credits based on cycle type
     const expiryTime = moment(verification.expiryTimeMillis);
     const subscriptionEndDate = expiryTime.toDate();
@@ -496,9 +496,9 @@ class WebhookHandlerService {
 
     // Get current user balance to track expired credits BEFORE adding event
     // This must be done before addEvent because expiredCredits is used in metadata
-    const userId = subscriptionHistory.user?._id 
-      ? subscriptionHistory.user._id.toString() 
-      : subscriptionHistory.user?.toString() || subscriptionHistory.user;
+      const userId = subscriptionHistory.user?._id 
+        ? subscriptionHistory.user._id.toString() 
+        : subscriptionHistory.user?.toString() || subscriptionHistory.user;
     
     let expiredCredits = 0;
     if (userId) {
@@ -794,7 +794,7 @@ class WebhookHandlerService {
     subscriptionHistory.autoRenewing = verification.autoRenewing;
     subscriptionHistory.status = newStatus;
     subscriptionHistory.cancellationReason = inGracePeriod
-      ? "Payment failed - subscription in grace period"
+        ? "Payment failed - subscription in grace period"
       : "Recovered from grace period";
     
     await subscriptionHistory.save();
@@ -873,7 +873,7 @@ class WebhookHandlerService {
     );
 
     const expiryDate = verification.expiryTimeMillis
-      ? moment(verification.expiryTimeMillis).toDate()
+        ? moment(verification.expiryTimeMillis).toDate()
       : subscriptionHistory.subscriptionEndDate;
 
     // Determine status based on event type

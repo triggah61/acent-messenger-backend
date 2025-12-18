@@ -329,74 +329,16 @@ class GooglePlayBillingService {
   }
 
   /**
-   * Generate regional configs for all major Google Play regions
-   * This ensures subscriptions are available worldwide, not just in one country
+   * Generate regional configs for US region only with USD
+   * Regional pricing for other countries must be configured manually in Google Play Console
    * @param {Number} priceAmountMicros - Price in micros (e.g., 9990000 for $9.99)
    * @param {String} priceCurrencyCode - Currency code (e.g., 'USD')
-   * @returns {Array} Array of regional config objects
+   * @returns {Array} Array of regional config objects (US only)
    */
   _generateAllRegionsConfig(priceAmountMicros, priceCurrencyCode = 'USD') {
-    // List of major Google Play regions
-    // Using USD as base currency - Google Play will handle currency conversion
-    const regions = [
-      'US', // United States
-      'GB', // United Kingdom
-      'CA', // Canada
-      'AU', // Australia
-      'DE', // Germany
-      'FR', // France
-      'ES', // Spain
-      'IT', // Italy
-      'NL', // Netherlands
-      'BE', // Belgium
-      'AT', // Austria
-      'CH', // Switzerland
-      'SE', // Sweden
-      'NO', // Norway
-      'DK', // Denmark
-      'FI', // Finland
-      'IE', // Ireland
-      'PT', // Portugal
-      'PL', // Poland
-      'CZ', // Czech Republic
-      'HU', // Hungary
-      'RO', // Romania
-      'BG', // Bulgaria
-      'HR', // Croatia
-      'SK', // Slovakia
-      'SI', // Slovenia
-      'GR', // Greece
-      'JP', // Japan
-      'KR', // South Korea
-      'TW', // Taiwan
-      'HK', // Hong Kong
-      'SG', // Singapore
-      'MY', // Malaysia
-      'TH', // Thailand
-      'ID', // Indonesia
-      'PH', // Philippines
-      'VN', // Vietnam
-      'IN', // India
-      'PK', // Pakistan
-      'BD', // Bangladesh
-      'AE', // United Arab Emirates
-      'SA', // Saudi Arabia
-      'EG', // Egypt
-      'ZA', // South Africa
-      'NG', // Nigeria
-      'KE', // Kenya
-      'BR', // Brazil
-      'MX', // Mexico
-      'AR', // Argentina
-      'CL', // Chile
-      'CO', // Colombia
-      'PE', // Peru
-      'NZ', // New Zealand
-      'RU', // Russia
-      'UA', // Ukraine
-      'TR', // Turkey
-      'IL', // Israel
-    ];
+    // Only create subscription for US region with USD
+    // Regional pricing for other countries must be configured manually in Google Play Console
+    const regions = ['US']; // United States only
 
     const priceUnits = Math.floor(priceAmountMicros / 1000000).toString();
     const priceNanos = (priceAmountMicros % 1000000) * 1000;
@@ -525,11 +467,32 @@ class GooglePlayBillingService {
 
       console.log(`GooglePlayBillingService: ✅ Base plan activated successfully for ${productId}`);
 
+      // Calculate price in USD for the message
+      const priceUSD = (priceAmountMicros / 1000000).toFixed(2);
+
       return {
         success: true,
         productId: productId,
         basePlanId: basePlanId,
         subscription: subscriptionResponse.data,
+        message: `✅ Subscription created successfully!\n\n` +
+          `📋 Subscription Details:\n` +
+          `   • Product ID: ${productId}\n` +
+          `   • Base Plan ID: ${basePlanId}\n` +
+          `   • Price: $${priceUSD} USD (US region only)\n\n` +
+          `⚠️  IMPORTANT: Regional Pricing Setup Required\n\n` +
+          `The subscription has been created with USD pricing for the US region only.\n` +
+          `To make it available in other countries, you need to configure regional pricing manually in Google Play Console:\n\n` +
+          `📝 Steps to Configure Regional Pricing:\n` +
+          `1. Go to Google Play Console → Your App → Monetize → Subscriptions\n` +
+          `2. Find the subscription: ${productId}\n` +
+          `3. Click on the base plan: ${basePlanId}\n` +
+          `4. Go to "Pricing" section\n` +
+          `5. Click "Add countries/regions" or "Manage pricing"\n` +
+          `6. Set prices for each country/region (Google Play will suggest local currency prices)\n` +
+          `7. Save the changes\n\n` +
+          `💡 Tip: Google Play can automatically suggest appropriate prices in local currencies based on USD price.\n\n` +
+          `✅ The subscription is saved in your database and will work once regional pricing is configured.`,
       };
     } catch (error) {
       console.error(`GooglePlayBillingService: ❌ Failed to create subscription ${productId}:`, error);
@@ -540,10 +503,27 @@ class GooglePlayBillingService {
         return await this.updateSubscription(subscriptionData);
       }
 
-      throw new AppError(
-        `Failed to create subscription in Google Play: ${error.message}`,
-        500
-      );
+      // Calculate price in USD for the error message
+      const priceUSD = (priceAmountMicros / 1000000).toFixed(2);
+      
+      // Provide helpful error message with manual setup instructions
+      const errorMessage = `Failed to create subscription in Google Play: ${error.message}\n\n` +
+        `📋 Subscription Details:\n` +
+        `   • Product ID: ${productId}\n` +
+        `   • Price: $${priceUSD} USD\n\n` +
+        `⚠️  Manual Setup Required\n\n` +
+        `The subscription could not be created automatically. Please create it manually in Google Play Console:\n\n` +
+        `📝 Steps:\n` +
+        `1. Go to Google Play Console → Your App → Monetize → Subscriptions\n` +
+        `2. Click "Create subscription"\n` +
+        `3. Enter Product ID: ${productId}\n` +
+        `4. Set price: $${priceUSD} USD (for US region)\n` +
+        `5. Configure regional pricing for other countries\n` +
+        `6. Set billing period: ${billingPeriod === 'P1M' ? 'Monthly' : 'Annual'}\n` +
+        `7. Activate the subscription\n\n` +
+        `✅ The plan is saved in your database and will work once you create the subscription in Play Console.`;
+
+      throw new AppError(errorMessage, 500);
     }
   }
 
@@ -811,6 +791,7 @@ class GooglePlayBillingService {
       monthlyProductId: null,
       annualProductId: null,
       errors: [],
+      messages: [],
     };
 
     // Skip custom plans
@@ -833,7 +814,7 @@ class GooglePlayBillingService {
           results.monthlyProductId = existingId;
         } else {
           try {
-            await this.createSubscription({
+            const monthlyResult = await this.createSubscription({
               productId: monthlyProductId,
               name: `${plan.name} (Monthly)`,
               description: plan.description || `${plan.name} monthly subscription`,
@@ -842,6 +823,9 @@ class GooglePlayBillingService {
               billingPeriod: 'P1M',
             });
             results.monthlyProductId = monthlyProductId;
+            if (monthlyResult.message) {
+              results.messages.push(`Monthly Subscription: ${monthlyResult.message}`);
+            }
           } catch (error) {
             results.errors.push({ period: 'monthly', error: error.message });
             console.error(`Failed to create monthly subscription for ${plan.name}:`, error.message);
@@ -863,7 +847,7 @@ class GooglePlayBillingService {
         } else {
           const annualPrice = plan.annualMonthlyPrice * 12; // Total annual price
           try {
-            await this.createSubscription({
+            const annualResult = await this.createSubscription({
               productId: annualProductId,
               name: `${plan.name} (Annual)`,
               description: plan.description || `${plan.name} annual subscription`,
@@ -872,6 +856,9 @@ class GooglePlayBillingService {
               billingPeriod: 'P1Y',
             });
             results.annualProductId = annualProductId;
+            if (annualResult.message) {
+              results.messages.push(`Annual Subscription: ${annualResult.message}`);
+            }
           } catch (error) {
             results.errors.push({ period: 'annual', error: error.message });
             console.error(`Failed to create annual subscription for ${plan.name}:`, error.message);
@@ -881,6 +868,11 @@ class GooglePlayBillingService {
 
       if (results.errors.length > 0) {
         results.success = false;
+      }
+
+      // Combine all messages into a single message string
+      if (results.messages.length > 0) {
+        results.message = results.messages.join('\n\n');
       }
 
       return results;

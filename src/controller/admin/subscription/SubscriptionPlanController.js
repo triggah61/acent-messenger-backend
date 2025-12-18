@@ -164,6 +164,7 @@ exports.createSubscriptionPlan = catchAsync(async (req, res) => {
 
   // Sync with Google Play Console (non-blocking)
   let googlePlaySyncResult = null;
+  let syncMessage = null;
   if (!isCustom && (parseFloat(monthlyPrice) > 0 || parseFloat(annualMonthlyPrice) > 0)) {
     try {
       googlePlaySyncResult = await googlePlayBillingService.syncSubscriptionPlan(plan);
@@ -184,6 +185,11 @@ exports.createSubscriptionPlan = catchAsync(async (req, res) => {
         plan.googlePlayLastSyncAt = new Date();
         await plan.save();
         console.log(`✅ Google Play sync successful for plan: ${plan.name}`);
+        
+        // Extract message from sync result if available
+        if (googlePlaySyncResult.message) {
+          syncMessage = googlePlaySyncResult.message;
+        }
       } else if (googlePlaySyncResult.skipped) {
         console.log(`ℹ️ Google Play sync skipped for plan: ${plan.name} - ${googlePlaySyncResult.reason}`);
       } else {
@@ -200,8 +206,14 @@ exports.createSubscriptionPlan = catchAsync(async (req, res) => {
     }
   }
 
+  // Build response message
+  let responseMessage = "Subscription plan created successfully";
+  if (syncMessage) {
+    responseMessage += `\n\n${syncMessage}`;
+  }
+
   res.status(201).json({
-    message: "Subscription plan created successfully",
+    message: responseMessage,
     data: plan,
     googlePlaySync: googlePlaySyncResult,
   });

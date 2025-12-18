@@ -49,7 +49,7 @@ async function processWebhookAsync(payload) {
       console.log("WebhookController: Decoded data:", decodedData);
       
       try {
-        notificationData = JSON.parse(decodedData);
+      notificationData = JSON.parse(decodedData);
         console.log("WebhookController: Parsed notification data:", JSON.stringify(notificationData, null, 2));
       } catch (parseError) {
         console.error("WebhookController: Failed to parse decoded data:", parseError);

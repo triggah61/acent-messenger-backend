@@ -261,22 +261,22 @@ exports.getLatestSubscriptions = catchAsync(async (req, res) => {
     const purchaseAmount = latestPayment?.amount || sub.amount || 0;
 
     return {
-      _id: sub._id,
-      userName: sub.user
-        ? `${sub.user.firstName || ""} ${sub.user.lastName || ""}`.trim() ||
-          sub.user.email ||
-          "N/A"
-        : "N/A",
-      userEmail: sub.user?.email || "N/A",
-      userPhoto: sub.user?.photo || null,
-      planName: sub.subscriptionPlan?.name || "N/A",
-      cycleType: sub.cycleType || "N/A",
-      cycleCompleted: sub.cycleCompleted || 0,
-      totalCycle: sub.totalCycle || 0,
-      status: sub.status || "N/A",
-      subscriptionStartedAt: sub.subscriptionStartedAt || null,
-      subscriptionEndDate: sub.subscriptionEndDate || null,
-      createdAt: sub.createdAt || null,
+    _id: sub._id,
+    userName: sub.user
+      ? `${sub.user.firstName || ""} ${sub.user.lastName || ""}`.trim() ||
+        sub.user.email ||
+        "N/A"
+      : "N/A",
+    userEmail: sub.user?.email || "N/A",
+    userPhoto: sub.user?.photo || null,
+    planName: sub.subscriptionPlan?.name || "N/A",
+    cycleType: sub.cycleType || "N/A",
+    cycleCompleted: sub.cycleCompleted || 0,
+    totalCycle: sub.totalCycle || 0,
+    status: sub.status || "N/A",
+    subscriptionStartedAt: sub.subscriptionStartedAt || null,
+    subscriptionEndDate: sub.subscriptionEndDate || null,
+    createdAt: sub.createdAt || null,
       purchaseAmount: purchaseAmount,
     };
   });
