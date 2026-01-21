@@ -150,7 +150,38 @@ const schema = new Schema(
       type: String,
       enum: ["admin", "user", "superAdmin"],
       default: "user",
-    }
+    },
+    // Facebook Attribution Data
+    facebookAttribution: {
+      fbclid: {
+        type: String,
+        default: null,
+      },
+      fbc: {  // Facebook Click cookie
+        type: String,
+        default: null,
+      },
+      fbp: {  // Facebook Browser cookie
+        type: String,
+        default: null,
+      },
+      utmSource: {
+        type: String,
+        default: null,
+      },
+      utmMedium: {
+        type: String,
+        default: null,
+      },
+      utmCampaign: {
+        type: String,
+        default: null,
+      },
+      attributionCapturedAt: {
+        type: Date,
+        default: null,
+      },
+    },
   },
   {
     timestamps: true,

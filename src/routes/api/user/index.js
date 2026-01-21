@@ -12,6 +12,7 @@ const translationRouter = require("./translation");
 const translationSessionRouter = require("./translation-session");
 const subscriptionRouter = require("./subscription");
 const topupRouter = require("./topup");
+const attributionController = require("../../../controller/user/AttributionController");
 const userRouter = express.Router();
 require("express-group-routes");
 
@@ -29,6 +30,9 @@ userRouter.group("/user", (user) => {
   user.use(topupRouter);
   // user.use(authRouter);
   user.use(callRouter);
+  
+  // Facebook attribution endpoint
+  user.post("/facebook-attribution", attributionController.storeFacebookAttribution);
   user.get("/", (req, res) => {
     res.json({
       message: "User route",

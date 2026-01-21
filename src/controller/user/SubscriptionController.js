@@ -636,6 +636,35 @@ exports.verifyGooglePlaySubscription = catchAsync(async (req, res) => {
   // Get balance summary
   const balanceSummary = await BalanceService.getBalanceSummary(user._id);
 
+  // Send to Facebook Conversions API (only if user has attribution)
+  // Do this asynchronously so it doesn't block the response
+  const facebookConversionsService = require("../../services/FacebookConversionsService");
+  facebookConversionsService
+    .sendPurchaseEvent({
+      user: currentUser,
+      eventName: "Purchase",
+      value: purchaseAmount,
+      currency: "USD",
+      contentIds: [plan._id.toString()],
+      contentType: "subscription",
+      contentName: plan.name,
+      orderId: purchaseVerification.orderId,
+      purchaseToken: purchaseToken,
+    })
+    .then((result) => {
+      if (result.success) {
+        console.log("✅ Facebook conversion tracked for subscription");
+      } else if (result.reason === "no_attribution") {
+        console.log("ℹ️ Skipped Facebook conversion - no attribution");
+      } else {
+        console.log("⚠️ Facebook conversion failed:", result.error);
+      }
+    })
+    .catch((error) => {
+      console.error("❌ Facebook conversion error:", error);
+      // Don't fail the purchase if Facebook API fails
+    });
+
   res.status(201).json({
     status: "success",
     message: existingActiveSubscription 
